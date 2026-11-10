@@ -2,16 +2,16 @@ import type { OrderDetail, ReturnRequest } from "@/lib/order-types";
 import { getShiprocketStatusFromOrder, isPaymentConfirmed } from "@/lib/order-tracker";
 
 export const ORDER_STATUS_IMAGES = {
-  orderPlaced: "/images/order-status/01-order-placed.png",
-  paymentConfirmed: "/images/order-status/02-payment-confirmed.png",
-  preparingOrder: "/images/order-status/03-preparing-order.png",
-  shipped: "/images/order-status/04-shipped.png",
-  outForDelivery: "/images/order-status/05-out-for-delivery.png",
-  arrivingToday: "/images/order-status/06-arriving-today.png",
-  delivered: "/images/order-status/07-delivered.png",
-  cancelled: "/images/order-status/08-cancelled.png",
-  returnRequested: "/images/order-status/09-return-requested.png",
-  refundProcessed: "/images/order-status/10-refund-processed.png",
+  orderPlaced: "/images/order-status/01-order-placed.webp",
+  paymentConfirmed: "/images/order-status/02-payment-confirmed.webp",
+  preparingOrder: "/images/order-status/03-preparing-order.webp",
+  shipped: "/images/order-status/04-shipped.webp",
+  outForDelivery: "/images/order-status/05-out-for-delivery.webp",
+  arrivingToday: "/images/order-status/06-arriving-today.webp",
+  delivered: "/images/order-status/07-delivered.webp",
+  cancelled: "/images/order-status/08-cancelled.webp",
+  returnRequested: "/images/order-status/09-return-requested.webp",
+  refundProcessed: "/images/order-status/10-refund-processed.webp",
 } as const;
 
 const SHIPPED_SHIPROCKET_STATUSES = [

@@ -2,13 +2,12 @@
 
 import React from "react";
 import Link from "next/link";
-import { ChevronRight, UserRound } from "lucide-react";
+import { ChevronRight, LogOut, UserRound } from "lucide-react";
 import styles from "./AccountDropdown.module.css";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import {
   MyAccountMenuIcon,
   MyWishlistMenuIcon,
-  SignOutMenuIcon,
 } from "@/components/ui/icons/account";
 
 type AccountDropdownProps = {
@@ -41,8 +40,8 @@ export default function AccountDropdown({ onSignOutClick }: AccountDropdownProps
       </div>
       <div className={styles.signout}>
         <button type="button" onClick={() => onSignOutClick?.()} className={styles.row}>
-          <span className={styles.icon}><SignOutMenuIcon className="shrink-0" /></span>
-          <span>Sign Out</span>
+          <span className={styles.icon}><LogOut size={17} aria-hidden="true" /></span>
+          <span>Sign out</span>
         </button>
       </div>
     </div>

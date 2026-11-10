@@ -19,17 +19,18 @@ export function ProductGrid({
 }: ProductGridProps) {
   if (isLoading) {
     return (
-      <div className={className || "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"}>
+      <div role="status" aria-label="Loading products" className={className || "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"}>
         {Array.from({ length: 10 }).map((_, i) => (
           <div
             key={i}
-            className="h-80 rounded-xl bg-white shadow-sm ring-1 ring-gray-100"
+            aria-hidden="true"
+            className="h-80 rounded-xl bg-white shadow-sm ring-1 ring-gray-100 motion-safe:animate-pulse"
           >
-            <div className="h-2/3 w-full rounded-t-xl bg-gray-100 animate-pulse" />
+            <div className="h-2/3 w-full rounded-t-xl bg-gray-100" />
             <div className="p-4 space-y-3">
-              <div className="h-4 w-3/4 rounded bg-gray-100 animate-pulse" />
-              <div className="h-3 w-1/2 rounded bg-gray-100 animate-pulse" />
-              <div className="h-6 w-full rounded bg-gray-100 animate-pulse" />
+              <div className="h-4 w-3/4 rounded bg-gray-100" />
+              <div className="h-3 w-1/2 rounded bg-gray-100" />
+              <div className="h-6 w-full rounded bg-gray-100" />
             </div>
           </div>
         ))}

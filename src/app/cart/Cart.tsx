@@ -9,6 +9,7 @@ import { useIsMutating } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/hooks/useCart";
+import { useOnlineStatus, useSlowPending } from "@/hooks/useOnlineStatus";
 import { CART_MUTATION_KEY, useUpdateCartLineItem, useRemoveCartLineItem } from "@/hooks/useCartMutations";
 import {
   extractCartObject,
@@ -431,7 +432,9 @@ const Cart: React.FC = () => {
   const remove = useRemoveCartLineItem();
   const pendingWrites = useIsMutating({ mutationKey: CART_MUTATION_KEY }) > 0;
   const cartItems = useMemo(() => mapCartPayloadToItems(cart.data), [cart.data]);
-  const loading = cart.isPending || (pendingWrites && cartItems.length === 0);
+  const online = useOnlineStatus();
+  const loading = online && (cart.isPending || (pendingWrites && cartItems.length === 0));
+  const slow = useSlowPending(loading);
   const [couponCode, setCouponCode] = useState("");
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
@@ -688,17 +691,17 @@ const Cart: React.FC = () => {
 
             {loading && (
               <div role="status" aria-label="Loading your cart" className="space-y-3 p-4">
-                <p>Loading your cart…</p>
-                {[0, 1].map(id => <div key={id} aria-hidden="true" className="h-32 animate-pulse rounded-xl bg-slate-100" />)}
+                <p>{slow ? "Loading your cart is taking longer than usual…" : "Loading your cart…"}</p>
+                {[0, 1].map(id => <div key={id} aria-hidden="true" className="h-32 rounded-xl bg-slate-100 motion-safe:animate-pulse" />)}
               </div>
             )}
-            {cart.isError && (
+            {online && cart.isError && (
               <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5">
                 <p>We couldn&apos;t refresh your cart. Please try again before checking out.</p>
                 <Button className="mt-3" disabled={cart.isFetching || pendingWrites} onClick={() => void cart.refetch()}>Retry loading cart</Button>
               </div>
             )}
-            {!loading && !cart.isError && !pendingWrites && cartItems.length === 0 && (
+            {online && !loading && !cart.isError && !pendingWrites && cartItems.length === 0 && (
               <div className={styles.emptyState}>
                 <h2>Your cart is empty</h2><p>Find something you love and add it to your cart.</p>
                 <Link href="/" className={styles.primaryButton}>Continue shopping</Link>
@@ -707,7 +710,7 @@ const Cart: React.FC = () => {
             {cartItems.map((item) => {
               const isRemoving = remove.isPending && remove.variables?.lineId === item.id;
               const isUpdating = update.isPending && update.variables?.lineId === item.id;
-              const controlsDisabled = pendingWrites || isRemoving || isUpdating;
+              const controlsDisabled = !online || pendingWrites || isRemoving || isUpdating;
               return (
                 <div
                   key={item.id}
@@ -992,7 +995,7 @@ const Cart: React.FC = () => {
               </div>
 
               <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0">
-                {cartItems.length === 0 || loading || pendingWrites || cart.isError ? (
+                {!online || cartItems.length === 0 || loading || pendingWrites || cart.isError ? (
                   <Button
                     className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}
                     disabled

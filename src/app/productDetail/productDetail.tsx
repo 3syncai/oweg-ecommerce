@@ -48,6 +48,7 @@ import {
   notifyWishlistSuccess,
 } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthProvider'
+import { useDeliveryLocation } from '@/contexts/DeliveryLocationProvider'
 import { useAddToCart } from '@/hooks/useCartMutations'
 import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
@@ -117,7 +118,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
-  const [pinCode, setPinCode] = useState('')
+  const { pincode: deliveryPincode } = useDeliveryLocation()
+  const [pinOverride, setPinOverride] = useState<string | null>(null)
+  const pinCode = pinOverride ?? deliveryPincode
   const pinLookup = useRef<AbortController | null>(null)
   useEffect(() => () => pinLookup.current?.abort(), [])
   const [pinStatus, setPinStatus] = useState<PinStatus>('idle')
@@ -724,9 +727,15 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
     setPinStatus('idle')
     setPinMessage('')
     pinLookup.current?.abort()
-    setPinCode('')
+    setPinOverride(null)
     setCompareSelection([])
   }, [productId])
+
+  useEffect(() => {
+    pinLookup.current?.abort()
+    setPinStatus('idle')
+    setPinMessage('')
+  }, [pinCode])
 
   const metadata = product?.metadata as MetaRecord
 
@@ -1215,7 +1224,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const handlePinInputChange = (value: string) => {
     pinLookup.current?.abort()
-    setPinCode(value)
+    setPinOverride(value)
     setPinStatus('idle')
     setPinMessage('')
   }

@@ -1,6 +1,7 @@
 import { searchFilterExpressions, type SearchFilters } from "@/lib/search-filters"
 import { getMeiliClient, getProductsIndexName } from "@/lib/meilisearch"
 import { normalizeSearchQuery, rewriteSearchTypos } from "@/lib/search-query-normalize"
+import type { ProductSort } from "@/lib/product-sort"
 
 export type SearchOptions = SearchFilters & {
   limit?: number
@@ -9,6 +10,7 @@ export type SearchOptions = SearchFilters & {
   collectionId?: string
   /** Match against indexed category_titles when id is unknown (handle/title). */
   category?: string
+  sort?: ProductSort
 }
 
 export type SearchProductsResult = {
@@ -38,6 +40,7 @@ type ScopeFilters = SearchFilters & {
   categoryId?: string
   collectionId?: string
   category?: string
+  sort?: ProductSort
 }
 
 function quoteFilterValue(value: string): string {
@@ -100,6 +103,8 @@ async function runSearch(
       filter: buildFilter(scope),
       facets: ["brand"],
       matchingStrategy: "all",
+      ...(scope.sort === "price-asc" ? { sort: ["price:asc"] } :
+        scope.sort === "price-desc" ? { sort: ["price:desc"] } : {}),
       attributesToRetrieve: [
         "id",
         "handle",

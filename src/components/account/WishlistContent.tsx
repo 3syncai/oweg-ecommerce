@@ -36,7 +36,23 @@ type WishlistContentProps = {
 };
 
 function WishlistSkeleton() {
-  return <BrandLoader compact label="Loading your saved favourites…" />;
+  return (
+    <div className={styles.grid} role="status" aria-label="Loading your saved favourites">
+      {[0, 1, 2].map(index => (
+        <div key={index} aria-hidden="true" className={cn(styles.card, "motion-safe:animate-pulse")}>
+          <div className={cn(styles.media, styles.skeletonBlock)} />
+          <div className={styles.details}>
+            <div className={cn(styles.skeletonBlock, "h-4 w-4/5 rounded")} />
+            <div className={cn(styles.skeletonBlock, "h-4 w-2/5 rounded")} />
+          </div>
+          <div className={styles.actions}>
+            <div className={cn(styles.skeletonBlock, "h-11 flex-1 rounded-xl")} />
+            <div className={cn(styles.skeletonBlock, "h-11 w-20 rounded-xl")} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function WishlistImage({ src, title, priority }: { src: string; title: string; priority: boolean }) {
@@ -193,7 +209,7 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
               <span className={styles.savedCount}><Heart className="h-3.5 w-3.5" />{products.length} saved {products.length === 1 ? "item" : "items"}</span>
             ) : null}
             {refreshing ? (
-              <span className={styles.refreshing} role="status"><Loader2 className="h-3.5 w-3.5 animate-spin" />Updating...</span>
+              <span className={styles.refreshing} role="status"><Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" />Updating…</span>
             ) : null}
             {!emptyState && !showSkeleton && products.length > 0 ? (
               <Link href="/" className={styles.shoppingLink}>Continue shopping <ArrowUpRight className="h-4 w-4" /></Link>

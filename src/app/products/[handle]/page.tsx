@@ -32,12 +32,12 @@ export async function generateMetadata({
 
   if (!product) {
     return {
-      title: "Product Not Found | OWEG",
+      title: "Product not found",
     };
   }
 
   return {
-    title: `${product.title} | OWEG`,
+    title: product.title,
     description:
       product.subtitle || product.description || `Buy ${product.title} at OWEG`,
   };

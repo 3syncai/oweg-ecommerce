@@ -1,125 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2, LogOut } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthProvider";
-import SignOutModalIcon from "@/components/ui/icons/signout-modal/SignOutModalIcon";
-import { cn } from "@/lib/utils";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 type LogoutConfirmModalProps = {
   open: boolean;
   onClose: () => void;
+  onSignedOut?: () => void;
 };
 
-export default function LogoutConfirmModal({ open, onClose }: LogoutConfirmModalProps) {
+export default function LogoutConfirmModal(props: LogoutConfirmModalProps) {
+  return props.open ? <SignOutDialog {...props} /> : null;
+}
+
+function SignOutDialog({ onClose, onSignedOut }: LogoutConfirmModalProps) {
   const { logout } = useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const online = useOnlineStatus();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const pending = useRef(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const title = useId();
+  const description = useId();
 
   useEffect(() => {
-    setMounted(true);
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    cancelRef.current?.focus();
+    return () => dialog.close();
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !signingOut) onClose();
-    };
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open, onClose, signingOut]);
-
-  const handleSignOut = async () => {
+  async function confirm() {
+    if (pending.current || !online) return;
+    pending.current = true;
     setSigningOut(true);
+    setFailed(false);
     try {
       await logout();
       onClose();
-      router.push("/");
-    } catch (err) {
-      console.error("logout failed", err);
+      toast.success("Signed out");
+      if (onSignedOut) onSignedOut();
+      else router.push("/");
+    } catch {
+      setFailed(true);
     } finally {
+      pending.current = false;
       setSigningOut(false);
     }
-  };
+  }
 
-  if (!open || !mounted) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/55 px-4 backdrop-blur-[2px]"
-      onClick={() => {
-        if (!signingOut) onClose();
-      }}
-      role="presentation"
-    >
-      <div
-        className="w-full max-w-[420px] rounded-2xl bg-white px-6 py-7 text-center shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="logout-modal-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center">
-          <SignOutModalIcon
-            name="logout-modal-illustration"
-            size={72}
-            className="h-[72px] w-[72px]"
-          />
-        </div>
-
-        <h2 id="logout-modal-title" className="text-xl font-bold text-[#1F2A33]">
-          Sign out of your account?
-        </h2>
-        <p className="mt-3 text-sm leading-relaxed text-[#667085]">
-          You&apos;ll need to sign in again to access your orders, wishlist, and account
-          settings.
-        </p>
-
-        <div className="mt-5 flex items-center gap-3 rounded-xl bg-[#EAF8E7] px-4 py-3 text-left">
-          <SignOutModalIcon
-            name="secure-shield-check"
-            size={28}
-            className="h-7 w-7 shrink-0"
-          />
-          <p className="text-sm font-medium text-[#0B7A22]">
-            Your account and data will remain secure.
+  return (
+    <dialog ref={dialogRef} aria-labelledby={title} aria-describedby={description}
+      onCancel={event => { event.preventDefault(); if (!pending.current) onClose(); }}
+      className="fixed inset-x-0 bottom-0 top-auto m-0 max-h-[85dvh] w-full max-w-none overflow-auto overscroll-contain rounded-t-3xl border border-slate-200 bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-left text-[#17372f] shadow-2xl backdrop:bg-[#102820]/55 sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md sm:rounded-3xl sm:p-6">
+      <div className="flex items-start gap-4">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[#eff5e9] text-[#155344]">
+          <LogOut size={20} aria-hidden="true" />
+        </span>
+        <div>
+          <h2 id={title} className="text-xl font-bold tracking-tight">Sign out of OWEG?</h2>
+          <p id={description} className="mt-1.5 text-sm leading-6 text-slate-600">
+            You’ll need to sign in again to access your orders, wishlist, and saved addresses.
           </p>
         </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={signingOut}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[#E6E9EC] bg-white px-3 text-sm font-semibold text-[#66C940] transition hover:bg-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <SignOutModalIcon name="stay-signed-in" size={18} className="h-[18px] w-[18px]" />
-            Stay Signed In
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void handleSignOut();
-            }}
-            disabled={signingOut}
-            className={cn(
-              "inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#D92D20] px-3 text-sm font-semibold text-white transition hover:bg-[#B42318] disabled:cursor-not-allowed",
-              signingOut && "opacity-70"
-            )}
-          >
-            <SignOutModalIcon name="sign-out-red" size={18} className="h-[18px] w-[18px]" />
-            {signingOut ? "Signing out..." : "Sign Out"}
-          </button>
-        </div>
       </div>
-    </div>,
-    document.body
+      {!online && <p role="status" className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Reconnect to the internet to sign out.</p>}
+      {failed && online && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-800">We couldn’t confirm sign-out. Please try again.</p>}
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <button ref={cancelRef} type="button" onClick={onClose} disabled={signingOut}
+          className="min-h-11 rounded-xl border border-[#d8e5d6] bg-white px-4 py-2 text-sm font-semibold text-[#155344] hover:bg-[#f4f8f1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155344] disabled:opacity-60">
+          Stay signed in
+        </button>
+        <button type="button" disabled={signingOut || !online} aria-busy={signingOut} onClick={() => void confirm()}
+          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#982f32] px-4 py-2 text-sm font-semibold text-white hover:bg-[#802528] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#982f32] disabled:opacity-60">
+          {signingOut && <Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" />}
+          {signingOut ? "Signing out…" : failed ? "Retry sign-out" : "Sign out"}
+        </button>
+      </div>
+    </dialog>
   );
 }

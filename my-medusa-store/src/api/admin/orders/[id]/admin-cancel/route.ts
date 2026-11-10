@@ -6,6 +6,7 @@ import { getSharedDbPool } from "../../../../../lib/db-pool"
 import { reverseVendorEarningsForOrder } from "../../../../../lib/vendor-earnings"
 import { listCurrentOrderVendorIds } from "../../../../../lib/vendor-cancellation-scope"
 import { withVendorOrderAssignmentLock } from "../../../../../lib/vendor-order-assignment-lock"
+import { enqueueOrderEmail } from "../../../../../services/order-email/outbox"
 import { VENDOR_MODULE } from "../../../../../modules/vendor"
 import VendorModuleService from "../../../../../modules/vendor/service"
 import {
@@ -246,10 +247,25 @@ async function performAdminCancellation(req: MedusaRequest, res: MedusaResponse)
 
   void notifyStorefrontCancel(order.id)
 
+  const useEmailQueue = process.env.ORDER_EMAIL_ENABLED === "true"
+  let customerEmailStatus: string | undefined
+  if (useEmailQueue) {
+    try {
+      const db = getSharedDbPool()
+      await enqueueOrderEmail({ orderId: order.id }, "order_cancelled", db)
+      const { rows } = await db.query<{ status: string }>(
+        "SELECT status FROM oweg_order_email_outbox WHERE order_id = $1 AND event_type = 'order_cancelled'",
+        [order.id]
+      )
+      customerEmailStatus = rows[0]?.status
+    } catch {
+      console.warn(`[order-email] admin cancellation enqueue check failed order=${order.id}`)
+    }
+  }
   const mailResults = await sendCancelNotificationEmails(req, orderAny, metadata, {
     customerReason,
     vendorMessage,
-    sendCustomer: true,
+    sendCustomer: !useEmailQueue,
     sendVendor: true,
   })
 
@@ -266,7 +282,12 @@ async function performAdminCancellation(req: MedusaRequest, res: MedusaResponse)
     status: updated.status,
     cancellation: readCancellationInfo(updated as any),
     vendor_charges: { status: chargeStatus, vendor_ids: currentVendorIds },
-    mail: mailResults,
+    mail: {
+      ...mailResults,
+      customer: useEmailQueue
+        ? { sent: customerEmailStatus === "accepted", queued: customerEmailStatus === "pending" }
+        : mailResults.customer,
+    },
   })
 }
 

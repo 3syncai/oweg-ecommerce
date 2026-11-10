@@ -13,6 +13,7 @@ export default function BrowserPushPreferences() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const updating = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
 
@@ -29,6 +30,7 @@ export default function BrowserPushPreferences() {
 
     async function read() {
       try {
+        setPermissionDenied(Notification.permission === "denied");
         const registration = await navigator.serviceWorker.getRegistration("/");
         const subscription = await registration?.pushManager.getSubscription();
         const query = subscription ? "?endpoint=" + encodeURIComponent(subscription.endpoint) : "";
@@ -62,9 +64,16 @@ export default function BrowserPushPreferences() {
     try {
       if (enabled) await enableBrowserPush({ customerId, signal });
       else await disableBrowserPush({ signOut: false });
-      if (!signal.aborted) setActive(enabled);
+      if (!signal.aborted) {
+        setActive(enabled);
+        setMessage(enabled ? "Product updates are on for this device." : "Product updates are off for this device.");
+      }
     } catch (error) {
-      if (!signal.aborted) setMessage(error instanceof Error ? error.message : "Couldn’t update notifications. Try again.");
+      if (!signal.aborted) {
+        const denied = Notification.permission === "denied";
+        setPermissionDenied(denied);
+        if (!denied) setMessage(error instanceof Error ? error.message : "Couldn’t update notifications. Try again.");
+      }
     } finally {
       updating.current = false;
       if (!signal.aborted) setBusy(false);
@@ -74,6 +83,10 @@ export default function BrowserPushPreferences() {
   return <section className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6">
     <h2 className="text-lg font-semibold">App notifications</h2>
     {!installed ? <p className="mt-2 text-sm text-gray-600">Open the installed OWEG app to manage device notifications. You can still read your updates in the notifications inbox.</p> :
+      permissionDenied ? <div role="status" className="mt-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-semibold">Notifications are blocked on this device</p>
+        <p className="mt-1">Allow notifications for OWEG in your browser or device settings, then reopen this page. Your notifications inbox is still available.</p>
+      </div> :
       <fieldset disabled={busy || (!ready && !active)} className="mt-3 space-y-2 disabled:opacity-60">
         <legend className="text-sm text-gray-600">Choose whether to receive offers and product updates on this device.</legend>
         {([{ value: true, label: "Allow product updates" }, { value: false, label: "Don’t allow notifications" }]).map(({ value, label }) =>
@@ -84,6 +97,6 @@ export default function BrowserPushPreferences() {
           </label>
         )}
       </fieldset>}
-    {installed && <p role="status" className="mt-2 text-sm text-[#155344]">{busy ? "Please wait…" : message}</p>}
+    {installed && !permissionDenied && <p role="status" className="mt-2 text-sm text-[#155344]">{busy ? "Checking notification settings…" : message}</p>}
   </section>;
 }

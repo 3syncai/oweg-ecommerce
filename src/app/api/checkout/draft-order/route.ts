@@ -4,6 +4,7 @@
 
 import { cookies, headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { createDraftOrder, readStoreCart } from "@/lib/medusa-admin";
 import {
   runPostConvertCheckoutSideEffects,
@@ -82,6 +83,21 @@ function mapAddress(input?: AddressInput) {
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
+}
+
+function draftUnavailable(stage: string, details: { upstreamStatus?: number; code?: unknown }) {
+  const reference = randomUUID().slice(0, 12);
+  const code = details.code;
+  console.error("[checkout-draft] Failed", {
+    reference,
+    stage,
+    upstreamStatus: details.upstreamStatus,
+    code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : undefined,
+  });
+  return NextResponse.json(
+    { error: "Unable to start checkout right now. Your cart is saved. Please try again.", reference },
+    { status: 503, headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 function cartItemLineTotalRupees(record: Record<string, unknown>, currencyCode: string): number {
@@ -261,7 +277,8 @@ async function getAuthenticatedCustomer(cookieHeader?: string) {
     skipContentType: true,
   });
 
-  if (!res.ok) return null;
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) throw Object.assign(new Error("Customer session lookup failed"), { code: "SESSION_UPSTREAM_FAILED" });
   const data = await res.json().catch(() => ({}));
   const customer =
     ((data as { customer?: Record<string, unknown> }).customer || data) as Record<string, unknown>;
@@ -275,17 +292,11 @@ export async function POST(req: Request) {
   let oweg10ReservationToken: string | null = null;
   let oweg10CustomerId: string | null = null;
   let oweg10Consumed = false;
+  let stage = "request";
   try {
     // parse body safely
     const body = (await req.json().catch(() => ({}))) as DraftRequestBody;
     const shipping = body.shipping;
-
-    console.log("🛒 [Checkout Debug] Incoming Request:", {
-      mode: body.mode,
-      hasItemsOverride: !!body.itemsOverride,
-      itemsOverrideCount: body.itemsOverride?.length,
-      shippingState: !!shipping
-    })
 
     // basic validation
     if (!shipping?.email || !shipping.firstName || !shipping.address1 || !shipping.postalCode) {
@@ -295,8 +306,13 @@ export async function POST(req: Request) {
     const headerList = await headers();
     const cookieStore = await cookies();
     const cookieHeader = headerList.get("cookie") || undefined;
-    const authCustomerPromise = getAuthenticatedCustomer(cookieHeader);
+    stage = "customer_session";
+    const authCustomer = await getAuthenticatedCustomer(cookieHeader);
+    if (typeof authCustomer?.id !== "string" || !authCustomer.id) {
+      return NextResponse.json({ error: "Please sign in to checkout." }, { status: 401 });
+    }
 
+    stage = "cart";
     const itemsOverride =
       Array.isArray(body.itemsOverride) && body.itemsOverride.length
         ? body.itemsOverride
@@ -364,15 +380,11 @@ export async function POST(req: Request) {
       return badRequest("Cart is empty or unavailable");
     }
 
-    // Debug: Log cart structure
-    console.log("🛒 [Draft Order] Cart Debug:", {
-      hasCart: !!cart,
-      hasItems: !!cart.items,
-      itemsIsArray: Array.isArray(cart.items),
-      itemsLength: Array.isArray(cart.items) ? cart.items.length : 0,
-      firstItem: Array.isArray(cart.items) && cart.items.length > 0 ? cart.items[0] : null,
-    });
+    if (typeof cart.customer_id === "string" && cart.customer_id && cart.customer_id !== authCustomer.id) {
+      return NextResponse.json({ error: "Cart access denied" }, { status: 403 });
+    }
 
+    stage = "seller_and_pricing";
     const items = Array.isArray(cart.items)
       ? cart.items
         .map((item: unknown) => {
@@ -518,15 +530,8 @@ export async function POST(req: Request) {
     };
 
     const shippingMethodsPayload = [shippingMethodPayload];
-    const cartCustomerId =
-      typeof (cart as Record<string, unknown>)?.customer_id === "string"
-        ? ((cart as Record<string, unknown>).customer_id as string)
-        : undefined;
-    const authCustomer = await authCustomerPromise;
-    if(typeof authCustomer?.id !== "string" || !authCustomer.id) return NextResponse.json({error:"Please sign in to checkout."},{status:401});
-    if(cartCustomerId && cartCustomerId!==authCustomer.id) return NextResponse.json({error:"Cart access denied"},{status:403});
-    const resolvedCustomerId =
-      (typeof authCustomer?.id === "string" ? authCustomer.id : undefined) || cartCustomerId;
+    const resolvedCustomerId = authCustomer.id;
+    stage = "affiliate";
     const customerAffiliateCode = typeof body.customerAffiliateCode === "string"
       ? body.customerAffiliateCode.trim().toUpperCase()
       : undefined;
@@ -538,10 +543,7 @@ export async function POST(req: Request) {
     }
 
     if (body.oweg10Applied) {
-      if (!resolvedCustomerId) {
-        return NextResponse.json({ error: "Please sign in to use OWEG10." }, { status: 401 });
-      }
-
+      stage = "coupon_reservation";
       const reservation = await reserveOweg10(resolvedCustomerId);
       if (!reservation.ok) {
         const message =
@@ -597,36 +599,36 @@ export async function POST(req: Request) {
       shipping_methods: shippingMethodsPayload
     };
 
-    console.log("🛒 [Draft Order] Creating with payload:", { regionId, itemsCount: items.length, shippingMethods: shippingMethodsPayload });
-
+    stage = "medusa_draft";
     const draftRes = await createDraftOrder(payload);
     if (!draftRes.ok || !draftRes.data) {
-      const error = extractMessage(draftRes.data) || "Failed to create draft order";
-      console.error("🛒 [Draft Order Debug] Creation Failed:", error);
       if (oweg10ReservationToken && oweg10CustomerId) {
         await releaseOweg10Reservation(oweg10CustomerId, oweg10ReservationToken).catch(() => undefined);
       }
-      if ((draftRes.status as number) === 401) {
-        return NextResponse.json({ error: "Unauthorized: check MEDUSA_ADMIN_API_KEY on frontend server" }, { status: 401 });
+      const message = extractMessage(draftRes.data);
+      if (message && /insufficient_inventory|does not have the required inventory/i.test(message)) {
+        return NextResponse.json({ error: "One or more items are out of stock. Please update your cart." }, { status: 409 });
       }
-      return NextResponse.json({ error }, { status: 500 });
+      const code = (draftRes.data as { code?: unknown; type?: unknown } | null);
+      return draftUnavailable(stage, { upstreamStatus: draftRes.status, code: code?.code ?? code?.type });
     }
 
     const draftOrder = extractOrder(draftRes.data);
-    console.log("🛒 [Draft Order Debug] Created Order Total:", draftOrder?.total);
 
     if (!draftOrder?.id) {
       if (oweg10ReservationToken && oweg10CustomerId) {
         await releaseOweg10Reservation(oweg10CustomerId, oweg10ReservationToken).catch(() => undefined);
       }
-      return NextResponse.json({ error: "Draft order missing id" }, { status: 500 });
+      return draftUnavailable(stage, { code: "MISSING_DRAFT_ID" });
     }
 
+    stage = "coin_reservation";
     let medusaOrderId = draftOrder.id;
     // Reserve before returning a COD draft or creating any gateway order.
     if(coinDiscountRupees>0) await reserveCheckoutCoins(getPool(),{
       orderId:medusaOrderId,customerId:String(authCustomer.id),amountMinor:Math.round(coinDiscountRupees*100),
     });
+    stage = "prepare_payment";
     let medusaCurrency = draftOrder.currency_code || cartCurrency;
     let medusaTotal = draftOrder.total || 0;
 
@@ -829,14 +831,15 @@ export async function POST(req: Request) {
       razorpay,
     });
   } catch (err) {
-    console.error("draft-order error", err);
     if (oweg10ReservationToken && oweg10CustomerId && !oweg10Consumed) {
       await releaseOweg10Reservation(oweg10CustomerId, oweg10ReservationToken).catch((releaseErr) => {
         console.warn("Failed to release OWEG10 reservation", releaseErr);
       });
     }
-    const message = err instanceof Error && err.message ? err.message : "Unable to create draft order";
-    const status = /OWEG10|coins|coin_reservation/i.test(message) ? 409 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const message = err instanceof Error ? err.message : "";
+    if (stage === "coin_reservation" && ["insufficient_available_coins", "coin_reservation_conflict"].includes(message)) {
+      return NextResponse.json({ error: "Your available coins changed. Review your coin discount and try again." }, { status: 409 });
+    }
+    return draftUnavailable(stage, { code: (err as { code?: unknown } | null)?.code });
   }
 }

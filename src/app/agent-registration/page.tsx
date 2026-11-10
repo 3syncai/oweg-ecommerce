@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { ArrowRight, HandHeart, MapPin, PhoneCall, Users } from "lucide-react";
 import Link from "next/link";
 import styles from "./AgentRegistration.module.css";
@@ -79,3 +80,8 @@ export default function AgentRegistrationPage() {
     </div>
   );
 }
+
+export const metadata: Metadata = {
+  title: "Become an OWEG agent",
+  description: "Learn about the OWEG agent programme and how to contact the partner team.",
+};

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Headphones, ShieldCheck, Timer } from "lucide-react";
 
@@ -168,3 +169,8 @@ export default function FAQPage() {
     </div>
   );
 }
+
+export const metadata: Metadata = {
+  title: "Frequently asked questions",
+  description: "Find answers about shopping on OWEG, including orders, delivery, payments, returns and your account.",
+};

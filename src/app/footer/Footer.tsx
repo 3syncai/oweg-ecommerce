@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { Facebook, Twitter, Instagram, Youtube, ChevronDown } from "lucide-react";
-import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks } from "@/lib/storefront-links";
+import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks, storefrontSupport } from "@/lib/storefront-links";
 import styles from "./Footer.module.css";
 
 const accountLinks = [
   { label: "Brands", href: "/brands" },
   { label: "Affiliates", href: "/affiliates" },
-  // { label: "Specials", href: "/specials" },
-  { label: "My Reward", href: "/my-reward" },
+  { label: "My Rewards", href: "/my-reward" },
 ];
 
-const Footer = () => {
+const Footer = ({ year }: { year: number }) => {
   return (
     <footer className={styles.root} aria-label="OWEG information and support">
       <div className={styles.mobile}>
@@ -22,7 +21,8 @@ const Footer = () => {
           <ul className={styles.links}>
             <li><Link href="/contact">Contact us</Link></li>
             <li><Link href="/faq">Frequently asked questions</Link></li>
-            <li><a href="mailto:owegonline@oweg.in">owegonline@oweg.in</a></li>
+            <li><a href={storefrontSupport.phoneHref}>{storefrontSupport.phone}</a></li>
+            <li><a href={`mailto:${storefrontSupport.email}`}>{storefrontSupport.email}</a></li>
           </ul>
           <div className={styles.support}><p><strong>Ascent Retechno India Pvt Ltd</strong></p><p>Av Pride, B-12, Ground Floor, Opp. Rahul, International School, Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.</p></div>
         </details>
@@ -35,7 +35,7 @@ const Footer = () => {
           <ul className={styles.links}>{[...quickLinks.filter(item => item.href === "/about"), ...accountLinks, ...quickLinks.filter(item => item.href === "/seller-registration")].map(item => <li key={item.href}><Link href={item.href}>{item.label}</Link></li>)}</ul>
         </details>
         <nav className={styles.legal} aria-label="Legal information"><Link href="/privacy-policy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/contact">Contact</Link></nav>
-        <p className={styles.copyright}>© 2026 OWEG. All Rights Reserved.</p>
+        <p className={styles.copyright}>© {year} OWEG. All Rights Reserved.</p>
       </div>
       <div className={`footer-root ${styles.desktop}`}>
 
@@ -43,7 +43,7 @@ const Footer = () => {
         <div className="grid grid-cols-2 gap-x-6 gap-y-9 md:gap-10 lg:grid-cols-5 lg:gap-12">
           {/* My Account Section */}
           <div>
-            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">My Account</h3>
+            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Explore OWEG</h3>
             <ul className="link-list space-y-0 md:space-y-4">
               {accountLinks.map((item) => (
                 <li key={item.href}>
@@ -96,13 +96,10 @@ const Footer = () => {
                 International School, Nilemore 4th Road,
                 Nalasopara West, Thane, Maharashtra - 401203.
               </p>
-              <a
-                href="mailto:owegonline@oweg.in"
-                className="link-item group inline-block mt-4"
-              >
-                <span className="link-text">Email Id - owegonline@oweg.in</span>
-                <span className="link-underline" />
-              </a>
+              <div className="mt-4 flex min-w-0 flex-col items-start gap-2">
+                <a href={storefrontSupport.phoneHref} className="link-item">{storefrontSupport.phone}</a>
+                <a href={`mailto:${storefrontSupport.email}`} className="link-item max-w-full break-all">{storefrontSupport.email}</a>
+              </div>
             </div>
           </div>
 
@@ -130,7 +127,7 @@ const Footer = () => {
       {/* Copyright */}
       <div className="border-top">
         <div className="oweg-container py-5 md:py-6">
-          <p className="copyright hoverable text-center">© 2026 OWEG. All Rights Reserved.</p>
+          <p className="copyright hoverable text-center">© {year} OWEG. All Rights Reserved.</p>
         </div>
       </div>
 

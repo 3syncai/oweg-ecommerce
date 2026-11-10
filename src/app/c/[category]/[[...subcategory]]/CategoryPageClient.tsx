@@ -1,16 +1,14 @@
 "use client";
 
-import BrandLoader from "@/components/ui/BrandLoader";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { SlidersHorizontal, X } from "lucide-react";
 import { CategoryHeader } from "@/components/modules/CategoryHeader";
 import { CategoryPagination } from "@/components/modules/CategoryPagination";
-import {
-  DealPreview,
-  FilterSidebar,
-  FilterState,
-} from "@/components/modules/FilterSidebar";
+import { CategoryFilterDialog, FilterSidebar } from "@/components/modules/FilterSidebar";
+import { ProductSortSelect } from "@/components/modules/ProductSortSelect";
+import { parseCategoryBrands, parseCategoryPrice, type CategoryFilters } from "@/lib/category-filters";
+import { parseProductSort, type ProductSort } from "@/lib/product-sort";
 import { ProductGrid } from "@/components/modules/ProductGrid";
 import { useCategoryProducts } from "@/hooks/useCategoryProducts";
 import type { MedusaCategory } from "@/services/medusa";
@@ -23,38 +21,6 @@ import {
 } from "@/lib/health-care-age-gate";
 
 const PRODUCTS_PER_PAGE = 20;
-
-function normalizeBrandKey(brand: string) {
-  return brand.trim().toLowerCase();
-}
-
-/** First-token-only fallback when product.brand is missing — never glues model names. */
-function brandFromProductName(name: string) {
-  if (!name) return undefined;
-  const first = name
-    .trim()
-    .split(/\s+/)[0]
-    ?.replace(/[^A-Za-z0-9&]/g, "");
-  if (!first || first.length < 2) return undefined;
-  return first;
-}
-
-function resolveUiBrand(product: { name: string; brand?: string }) {
-  const fromField = product.brand?.trim();
-  if (fromField) return fromField;
-  return brandFromProductName(product.name);
-}
-
-const DEFAULT_BRAND_OPTIONS = [
-  "Nelkon",
-  "Paras",
-  "Syska",
-  "Maharaja",
-  "Crompton",
-  "Oweg",
-  "Bajaj",
-  "Pigeon",
-];
 
 type CategoryPageClientProps = {
   category: MedusaCategory;
@@ -73,31 +39,19 @@ export function CategoryPageClient({
   subcategoryHandle,
   initialProducts,
 }: CategoryPageClientProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const showHealthCareAgeGate =
     isHealthCareCategoryHandle(categoryHandle) || isHealthCarePath(pathname);
 
-  const parseNumberParam = useCallback((value: string | null) => {
-    if (value === null) return undefined;
-    const trimmed = value.trim();
-    if (!trimmed) return undefined;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }, []);
-
-  const [filters, setFilters] = useState<FilterState>(() => ({
-    subcategories: [],
-    ratings: [],
-    brands: [],
-    priceMin: parseNumberParam(searchParams?.get("price_min")),
-    priceMax: parseNumberParam(searchParams?.get("price_max")),
-    dealsOnly: searchParams?.get("deals") === "1",
-  }));
-  const [dealPreview, setDealPreview] = useState<DealPreview[]>([]);
-  const [dealCount, setDealCount] = useState(0);
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const filters = useMemo<CategoryFilters>(() => ({
+    priceMin: parseCategoryPrice(searchParams.get("price_min")),
+    priceMax: parseCategoryPrice(searchParams.get("price_max")),
+    dealsOnly: searchParams.get("deals") === "1",
+    brands: parseCategoryBrands(searchParams.getAll("brand")),
+  }), [searchParams]);
+  const sort = parseProductSort(searchParams.get("sort"));
+  const [draftFilters, setDraftFilters] = useState<CategoryFilters | null>(null);
 
   const activeCategoryId = selectedSubcategory?.id || category.id;
   const categoryTitle =
@@ -107,10 +61,8 @@ export function CategoryPageClient({
     category.name ||
     "Products";
 
-  const requestedPage = Math.max(
-    1,
-    parseInt(searchParams?.get("page") || "1", 10) || 1,
-  );
+  const pageNumber = Number(searchParams.get("page") || "1");
+  const requestedPage = Number.isSafeInteger(pageNumber) && pageNumber > 0 ? pageNumber : 1;
   const pageOffset = (requestedPage - 1) * PRODUCTS_PER_PAGE;
 
   const includeSubcategories = !selectedSubcategory;
@@ -119,6 +71,8 @@ export function CategoryPageClient({
       priceMin: filters.priceMin,
       priceMax: filters.priceMax,
       dealsOnly: filters.dealsOnly,
+      brands: filters.brands,
+      sort,
       includeSubcategories,
       limit: PRODUCTS_PER_PAGE,
       offset: pageOffset,
@@ -127,6 +81,8 @@ export function CategoryPageClient({
       filters.priceMin,
       filters.priceMax,
       filters.dealsOnly,
+      filters.brands,
+      sort,
       includeSubcategories,
       pageOffset,
     ],
@@ -143,7 +99,9 @@ export function CategoryPageClient({
       (queryFilters.priceMin ?? undefined) ===
         (initialProducts.appliedPriceMin ?? undefined) &&
       (queryFilters.priceMax ?? undefined) ===
-        (initialProducts.appliedPriceMax ?? undefined)
+        (initialProducts.appliedPriceMax ?? undefined) &&
+      queryFilters.sort === (initialProducts.appliedSort ?? "default") &&
+      queryFilters.brands.join("\n") === (initialProducts.appliedBrands ?? []).join("\n")
       ? initialProducts
       : undefined,
   );
@@ -154,57 +112,6 @@ export function CategoryPageClient({
   );
   const serverCount = pageData?.count ?? products.length;
   const serverHasMore = pageData?.hasMore ?? false;
-  const brandFilterActive = filters.brands.length > 0;
-
-  const derivedBrandOptions = useMemo(() => {
-    const counts = new Map<string, number>();
-    products.forEach((product) => {
-      const brand = resolveUiBrand(product);
-      if (brand) {
-        const key = normalizeBrandKey(brand);
-        const existing = [...counts.keys()].find(
-          (label) => normalizeBrandKey(label) === key,
-        );
-        const label = existing ?? brand;
-        counts.set(label, (counts.get(label) ?? 0) + 1);
-      }
-    });
-    return Array.from(counts.entries())
-      .sort((a, b) => {
-        if (b[1] !== a[1]) return b[1] - a[1];
-        return a[0].localeCompare(b[0]);
-      })
-      .map(([brand]) => brand);
-  }, [products]);
-
-  const brandOptions = derivedBrandOptions.length
-    ? derivedBrandOptions
-    : DEFAULT_BRAND_OPTIONS;
-
-  const filteredProducts = useMemo(() => {
-    let filtered = [...products];
-
-    if (filters.brands.length > 0) {
-      const selected = new Set(
-        filters.brands.map((brand) => normalizeBrandKey(brand)),
-      );
-      filtered = filtered.filter((product) => {
-        const brand = resolveUiBrand(product);
-        if (brand && selected.has(normalizeBrandKey(brand))) {
-          return true;
-        }
-        if (!brand) {
-          return filters.brands.some((selectedBrand) =>
-            product.name.toLowerCase().includes(selectedBrand.toLowerCase()),
-          );
-        }
-        return false;
-      });
-    }
-
-    return filtered;
-  }, [products, filters.brands]);
-
   const pagesFromCount = Math.max(
     1,
     Math.ceil(serverCount / PRODUCTS_PER_PAGE),
@@ -226,177 +133,64 @@ export function CategoryPageClient({
     : undefined;
 
   const enrichedProducts = useMemo(() => {
-    return filteredProducts.map((product) => ({
+    return products.map((product) => ({
       ...product,
       sourceCategoryId: activeCategoryId,
       sourceCategoryHandle: normalizedHandle,
     }));
-  }, [filteredProducts, activeCategoryId, normalizedHandle]);
+  }, [products, activeCategoryId, normalizedHandle]);
 
-  const handleFilterChange = useCallback(
-    (partial: Partial<FilterState>) => {
-      setFilters((prev) => ({
-        ...prev,
-        ...partial,
-      }));
+  const updateQuery = useCallback((update: (params: URLSearchParams) => void) => {
+    const params = new URLSearchParams(window.location.search);
+    update(params);
+    const next = params.toString();
+    if (next === window.location.search.slice(1)) return;
+    window.history.pushState(null, "", next ? `${pathname}?${next}` : pathname);
+  }, [pathname]);
 
-      if (!router || !pathname) return;
-      const nextParams = new URLSearchParams(searchParams?.toString());
-      nextParams.delete("page");
-      const next = nextParams.toString();
-      router.replace(next ? `${pathname}?${next}` : pathname, {
-        scroll: false,
-      });
-    },
-    [pathname, router, searchParams],
-  );
-
-  const goToPage = useCallback(
-    (page: number) => {
-      if (!router || !pathname) return;
-      const safePage = Math.max(1, Math.min(page, totalPages));
-      const nextParams = new URLSearchParams(searchParams?.toString());
-      if (safePage <= 1) {
-        nextParams.delete("page");
-      } else {
-        nextParams.set("page", String(safePage));
+  const handleFilterChange = (partial: Partial<CategoryFilters>) => {
+    const next = { ...filters, ...partial };
+    updateQuery(params => {
+      params.delete("page");
+      for (const [key, value] of [["price_min", next.priceMin], ["price_max", next.priceMax]] as const) {
+        if (value === undefined) params.delete(key);
+        else params.set(key, String(value));
       }
-      const next = nextParams.toString();
-      router.replace(next ? `${pathname}?${next}` : pathname, {
-        scroll: false,
-      });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    },
-    [pathname, router, searchParams, totalPages],
-  );
+      if (next.dealsOnly) params.set("deals", "1");
+      else params.delete("deals");
+      params.delete("brand");
+      parseCategoryBrands(next.brands).forEach(brand => params.append("brand", brand));
+    });
+  };
 
-  useEffect(() => {
-    if (!router || !pathname) return;
-    const nextParams = new URLSearchParams(searchParams?.toString());
+  const changeSort = (next: ProductSort) => {
+    updateQuery(params => {
+      params.delete("page");
+      if (next === "default") params.delete("sort");
+      else params.set("sort", next);
+    });
+  };
 
-    const syncNumberParam = (key: string, value?: number) => {
-      if (value !== undefined && Number.isFinite(value)) {
-        nextParams.set(key, String(value));
-      } else {
-        nextParams.delete(key);
-      }
-    };
+  const goToPage = (page: number) => {
+    const safePage = Math.max(1, Math.min(page, totalPages));
+    updateQuery(params => {
+      if (safePage <= 1) params.delete("page");
+      else params.set("page", String(safePage));
+    });
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
 
-    syncNumberParam("price_min", filters.priceMin);
-    syncNumberParam("price_max", filters.priceMax);
-
-    if (filters.dealsOnly) {
-      nextParams.set("deals", "1");
-    } else {
-      nextParams.delete("deals");
-    }
-
-    const next = nextParams.toString();
-    if (next === searchParams?.toString()) {
-      return;
-    }
-
-    router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
-  }, [
-    filters.priceMin,
-    filters.priceMax,
-    filters.dealsOnly,
-    pathname,
-    router,
-    searchParams,
-  ]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setDealPreview([]);
-    setDealCount(0);
-
-    async function loadDealPreview() {
-      if (!activeCategoryId) {
-        setDealPreview([]);
-        setDealCount(0);
-        return;
-      }
-
-      try {
-        const params = new URLSearchParams({
-          categoryId: activeCategoryId,
-          limit: "6",
-        });
-        if (includeSubcategories) {
-          params.set("includeSubcategories", "1");
-        }
-        const res = await fetch(
-          `/api/medusa/deal-of-the-day?${params.toString()}`,
-          { signal: controller.signal },
-        );
-        if (!res.ok) {
-          throw new Error(`Failed to load deals: ${res.status}`);
-        }
-        const data = await res.json();
-        if (controller.signal.aborted) return;
-        const preview = Array.isArray(data.products) ? data.products : [];
-        setDealPreview(preview);
-        setDealCount(
-          typeof data.total === "number" ? data.total : preview.length,
-        );
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setDealPreview([]);
-          setDealCount(0);
-        }
-        console.warn("Failed fetching deals of the day", error);
-      }
-    }
-
-    loadDealPreview();
-    return () => controller.abort();
-  }, [activeCategoryId, includeSubcategories]);
-
-  // Lock background scroll and allow Escape while the mobile filter sheet is open.
-  useEffect(() => {
-    if (!mobileFiltersOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMobileFiltersOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [mobileFiltersOpen]);
-
-  const headingDescription = isLoading
-    ? "Loading products…"
-    : brandFilterActive
-      ? `${filteredProducts.length} matching on this page · ${serverCount} in category`
-      : `${serverCount} products available`;
-
-  const resultsRangeStart = brandFilterActive
-    ? filteredProducts.length === 0
-      ? 0
-      : 1
-    : filteredProducts.length === 0
-      ? 0
-      : pageOffset + 1;
-  const resultsRangeEnd = brandFilterActive
-    ? filteredProducts.length
-    : pageOffset + filteredProducts.length;
-
-  const filterSidebar = (
-    <FilterSidebar
-      categoryHandle={categoryHandle}
-      subcategories={subcategories}
-      filters={filters}
-      onFilterChange={handleFilterChange}
-      selectedSubcategory={subcategoryHandle}
-      dealPreview={dealPreview}
-      dealCount={dealCount}
-      brandOptions={brandOptions}
-    />
-  );
+  const activeCount = filters.brands.length + Number(filters.dealsOnly) +
+    Number(filters.priceMin !== undefined || filters.priceMax !== undefined);
+  const headingDescription = isLoading ? "Loading products…" : isError ? "Products unavailable" :
+    pageData?.complete === false && activeCount > 0 ? `${products.length} matches on this page` :
+    `${serverCount} ${serverCount === 1 ? "product" : "products"} available`;
+  const sortUnavailable = pageData?.complete === false;
+  const filterProps = {
+    categoryHandle, subcategories, selectedSubcategory: subcategoryHandle,
+    brandOptions: pageData?.brandOptions ?? initialProducts?.brandOptions ?? [],
+    dealCount: pageData?.dealCount ?? initialProducts?.dealCount ?? 0,
+  };
 
   return (
     <div className={`${styles.page} min-h-screen`}>
@@ -404,7 +198,7 @@ export function CategoryPageClient({
       <div className={styles.container}>
         <div className={styles.resultsLayout}>
           <aside className={`${styles.filterRail} ${styles.categoryRail}`} aria-label="Product filters">
-            <div className={styles.filterSidebar}>{filterSidebar}</div>
+            <FilterSidebar {...filterProps} filters={filters} onFilterChange={handleFilterChange} />
           </aside>
 
           <main className={styles.resultsMain}>
@@ -414,42 +208,44 @@ export function CategoryPageClient({
                 <h1>{categoryTitle}</h1>
                 <p className="mt-1 text-sm text-[var(--oweg-ink-muted)]">
                   {headingDescription}
-                  {!isLoading && filteredProducts.length > 0 && (
+                  {!isLoading && products.length > 0 && pageData?.complete !== false && (
                     <span className="text-gray-500">
                       {" "}
-                      · Showing {resultsRangeStart}–{resultsRangeEnd}
+                      · Showing {pageOffset + 1}–{pageOffset + products.length}
                     </span>
                   )}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setMobileFiltersOpen(true)}
-                className={`${styles.filterButton} ${styles.categoryFilterButton}`}
-                aria-haspopup="dialog"
-                aria-expanded={mobileFiltersOpen}
-              >
-                <SlidersHorizontal className="h-4 w-4 text-[var(--oweg-green-dark)]" />
-                Filters
-              </button>
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <button type="button" onClick={() => setDraftFilters(filters)}
+                  className={`${styles.filterButton} ${styles.categoryFilterButton}`}
+                  aria-haspopup="dialog" aria-expanded={draftFilters !== null}>
+                  <SlidersHorizontal size={16} aria-hidden="true" /> Filters{activeCount > 0 ? ` (${activeCount})` : ""}
+                </button>
+                <ProductSortSelect value={sortUnavailable ? "default" : sort}
+                  onChange={changeSort} defaultLabel="Newest arrivals" priceSortAvailable={!sortUnavailable} />
+              </div>
             </div>
+            {sortUnavailable && <p className="mb-4 text-sm text-[#52664d]">
+              Price sorting is available in smaller subcategories.
+              {sort !== "default" && <> Showing newest arrivals. <button type="button" className="underline" onClick={() => changeSort("default")}>Reset sort</button></>}
+            </p>}
 
             {!selectedSubcategory && (
               <CategoryHeader categoryHandle={categoryHandle} subcategories={subcategories} />
             )}
             <div className={styles.chips}>
-              {filters.brands.map((brand) => <button key={brand} type="button" className={styles.chip} onClick={() => handleFilterChange({ brands: filters.brands.filter((value) => value !== brand) })} aria-label={`Remove ${brand} filter`}>{brand}<X size={12} aria-hidden="true" /></button>)}
+              {filters.brands.map((brand) => <button key={brand} type="button" className={styles.chip} onClick={() => handleFilterChange({ brands: filters.brands.filter((value) => value !== brand) })} aria-label={`Remove ${brand} filter`}>{filterProps.brandOptions.find(label => label.toLowerCase() === brand) ?? brand}<X size={12} aria-hidden="true" /></button>)}
               {(filters.priceMin !== undefined || filters.priceMax !== undefined) && <button type="button" className={styles.chip} onClick={() => handleFilterChange({ priceMin: undefined, priceMax: undefined })} aria-label="Remove price filter">₹{filters.priceMin ?? 0} – {filters.priceMax === undefined ? 'Any' : `₹${filters.priceMax}`}<X size={12} aria-hidden="true" /></button>}
               {filters.dealsOnly && <button type="button" className={styles.chip} onClick={() => handleFilterChange({ dealsOnly: false })}>Today&apos;s deals<X size={12} aria-hidden="true" /></button>}
             </div>
 
-            {isLoading && <BrandLoader compact label="Finding your products…" />}
             {isError && <p role="alert" className="py-4">Products couldn’t load. <button type="button" className="underline" onClick={() => void refetch()}>Try again</button></p>}
             <ProductGrid
               className={styles.productGrid}
               products={enrichedProducts}
               isLoading={isLoading}
-              showEmpty={!isError && !isLoading && filteredProducts.length === 0}
+              showEmpty={!isError && !isLoading && products.length === 0}
             />
 
             {!isLoading && totalPages > 1 && (
@@ -464,42 +260,13 @@ export function CategoryPageClient({
         </div>
       </div>
 
-      {/* Mobile / tablet filter sheet — same state, same handlers */}
-      {mobileFiltersOpen && (
-        <div className="fixed inset-0 z-[950] lg:hidden" role="dialog" aria-modal="true" aria-label="Filters">
-          <button
-            type="button"
-            aria-label="Close filters"
-            className="absolute inset-0 h-full w-full bg-black/45 backdrop-blur-[2px]"
-            onClick={() => setMobileFiltersOpen(false)}
-          />
-          <div className="absolute inset-x-0 bottom-0 flex max-h-[88vh] flex-col rounded-t-[var(--oweg-radius-xl)] bg-white shadow-[0_-20px_60px_-30px_rgba(0,0,0,0.5)]">
-            <div className="flex shrink-0 items-center justify-between border-b border-[var(--oweg-border)] px-4 py-3">
-              <p className="text-base font-semibold text-[var(--oweg-ink)]">Filters</p>
-              <button
-                type="button"
-                onClick={() => setMobileFiltersOpen(false)}
-                aria-label="Close filters"
-                className="oweg-tap flex items-center justify-center rounded-full border border-[var(--oweg-border-strong)] text-[var(--oweg-ink-soft)]"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
-              {filterSidebar}
-            </div>
-            <div className="oweg-safe-bottom shrink-0 border-t border-[var(--oweg-border)] px-4 pt-3">
-              <button
-                type="button"
-                onClick={() => setMobileFiltersOpen(false)}
-                className="oweg-tap w-full rounded-xl bg-[var(--oweg-green)] py-3 text-sm font-semibold text-white transition hover:bg-[var(--oweg-green-dark)]"
-              >
-                Show {filteredProducts.length} results
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {draftFilters && <CategoryFilterDialog {...filterProps} filters={draftFilters}
+        onFilterChange={partial => setDraftFilters(previous => previous && { ...previous, ...partial })}
+        onClose={() => setDraftFilters(null)}
+        onApply={next => {
+          handleFilterChange(next);
+          setDraftFilters(null);
+        }} />}
     </div>
   );
 }

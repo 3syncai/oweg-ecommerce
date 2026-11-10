@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Loader2, Package } from "lucide-react";
+import { ArrowRight, ChevronRight, Package } from "lucide-react";
+import BrandLoader from "@/components/ui/BrandLoader";
 import { toast } from "sonner";
 import OrderBreadcrumbs from "@/components/orders/OrderBreadcrumbs";
 import OrderDetailStatusSection from "@/components/orders/OrderDetailStatusSection";
@@ -19,6 +20,7 @@ import { getOrderCardActions } from "@/lib/order-actions";
 import { getCurrentTrackerStepLabel } from "@/lib/order-tracker";
 import {
   buildTrackHref,
+  buildOrderItemProductHref,
   formatOrderCurrency,
   formatOrderDateTime,
   formatShippingAddress,
@@ -26,7 +28,6 @@ import {
   getOrderDisplayLabel,
   getPaymentMethodDisplayName,
   getPaymentMethodLabel,
-  getEasyShipPartnerLabel,
   getShiprocketAwb,
   isPaymentPending,
   resolveOrderLineItemsForCart,
@@ -93,52 +94,43 @@ function ActionTile({
   icon,
   label,
   subtext,
-  tone,
   disabled,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   subtext?: string;
-  tone: "red" | "green" | "orange" | "blue";
   disabled?: boolean;
   onClick?: () => void;
 }) {
-  const toneClasses = {
-    red: "border-slate-200 bg-white text-rose-700 hover:border-rose-200 hover:bg-rose-50",
-    green: "border-slate-200 bg-white text-green-800 hover:border-green-200 hover:bg-green-50",
-    orange: "border-slate-200 bg-white text-orange-800 hover:border-orange-200 hover:bg-orange-50",
-    blue: "border-slate-200 bg-white text-slate-900 hover:border-green-200 hover:bg-green-50",
-  };
-
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 rounded-xl border px-4 py-4 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 [&>img]:h-5 [&>img]:w-5 [&>img]:shrink-0",
-        toneClasses[tone],
-        disabled && "cursor-not-allowed opacity-50 hover:bg-inherit"
+        "flex min-h-14 w-full items-center gap-3 rounded-lg px-2 py-3 text-left focus-visible:outline-2 focus-visible:outline-green-700 sm:px-3",
+        disabled ? "cursor-not-allowed text-slate-600" : "text-slate-900 hover:bg-slate-50"
       )}
     >
-      {icon}
-      <span className="min-w-0">
-        <span className="block text-xs font-semibold">{label}</span>
-        {subtext ? <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{subtext}</span> : null}
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-slate-100">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{label}</span>
+        {subtext ? <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">{subtext}</span> : null}
       </span>
+      {!disabled && <ChevronRight className="size-4 shrink-0 text-slate-500" aria-hidden />}
     </button>
   );
 }
 
-function OrderItemThumbnail({ src, title }: { src?: string; title?: string }) {
+function OrderItemThumbnail({ src }: { src?: string }) {
   const [failed, setFailed] = useState(false);
   return (
     <div className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 sm:h-20 sm:w-20">
       {src && !failed ? (
-        <Image src={src} alt={title || "Item"} fill sizes="80px" className="object-contain p-2" onError={() => setFailed(true)} />
+        <Image src={src} alt="" fill sizes="80px" className="object-contain p-2" onError={() => setFailed(true)} />
       ) : (
-        <Package className="h-7 w-7 text-slate-300" aria-label="Product image unavailable" />
+        <Package className="h-7 w-7 text-slate-300" aria-hidden />
       )}
     </div>
   );
@@ -227,7 +219,6 @@ export default function OrderDetailContent({
 
   const displayLabel = getOrderDisplayLabel(order, orderNumber);
   const awb = getShiprocketAwb(order);
-  const partnerLabel = getEasyShipPartnerLabel(order);
   const trackHref = buildTrackHref(orderId, order?.display_id ?? orderNumber);
   const address = order?.shipping_address;
   const mapsUrl = getGoogleMapsUrl(address);
@@ -339,7 +330,7 @@ export default function OrderDetailContent({
   if (loading && !order) {
     return (
       <div className="flex min-h-[240px] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#326b29]" />
+        <BrandLoader compact label="Loading your order details…" />
       </div>
     );
   }
@@ -534,25 +525,17 @@ export default function OrderDetailContent({
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="mb-3 flex items-center gap-2">
             <OrderDetailsIcon name="delivery-partner" size={18} className="h-[18px] w-[18px]" />
-            <p className="text-sm font-semibold text-slate-900">Delivery Partner</p>
+            <h2 className="text-sm font-semibold text-slate-900">Delivery tracking</h2>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#EAF8E7]">
-              <OrderDetailsIcon name="delivery-partner" size={24} className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{partnerLabel}</p>
-              <p className="text-xs text-slate-500">
-                {awb ? `Tracking ID: ${awb}` : "Tracking will appear once shipped"}
-              </p>
-            </div>
-          </div>
-          {awb ? (
+          <p className="break-words text-sm text-slate-600">
+            {awb ? `Tracking reference: ${awb}` : "See the latest updates for this order."}
+          </p>
+          {awb || cardActions?.showTrack ? (
             <Link
               href={trackHref}
-              className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#326b29] hover:underline"
+              className="mt-2 inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-semibold text-[#145448] hover:underline focus-visible:outline-2 focus-visible:outline-green-700"
             >
-              View Tracking
+              View tracking <ArrowRight className="size-4" aria-hidden />
             </Link>
           ) : null}
         </div>
@@ -590,28 +573,37 @@ export default function OrderDetailContent({
           <p className="text-sm font-semibold text-slate-900">Order Items ({itemCount})</p>
         </div>
         <div className="divide-y divide-slate-100">
-          {(order?.items || []).map((item) => (
-            <div key={item.id} className="flex flex-wrap items-start gap-4 py-4 sm:flex-nowrap sm:items-center">
-              <OrderItemThumbnail src={item.thumbnail} title={item.title} />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                <p className="mt-2 text-xs text-slate-500">Qty: {item.quantity}</p>
-              </div>
-              <p className="text-sm font-semibold text-slate-900">
+          {(order?.items || []).map((item) => {
+            const productHref = buildOrderItemProductHref(item);
+            const summary = (
+              <>
+                <OrderItemThumbnail src={item.thumbnail} />
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-semibold text-slate-900 group-hover:text-[#145448] group-hover:underline">{item.title || "Order item"}</p>
+                  <p className="mt-1.5 text-xs text-slate-600">Qty: {item.quantity}</p>
+                </div>
+              </>
+            );
+            return <div key={item.id} className="flex items-start gap-3 py-4 sm:gap-4">
+              {productHref ? (
+                <Link href={productHref} prefetch={false} className="group flex min-w-0 flex-1 items-start gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700">{summary}</Link>
+              ) : (
+                <div className="flex min-w-0 flex-1 items-start gap-3">{summary}</div>
+              )}
+              <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
                 {formatOrderCurrency(
                   item.total ?? (item.unit_price || 0) * (item.quantity || 1),
                   order?.currency_code
                 )}
               </p>
             </div>
-          ))}
+          })}
           {!order?.items?.length ? (
             <p className="p-4 text-sm text-slate-500">No items found.</p>
           ) : null}
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <div className="mb-4 flex items-center gap-2">
             <OrderDetailsIcon name="price-summary" size={18} className="h-[18px] w-[18px]" />
@@ -657,77 +649,55 @@ export default function OrderDetailContent({
                 <span>Total Amount</span>
                 <span>{formatOrderCurrency(displayTotals.grandTotal, order?.currency_code)}</span>
               </div>
-              <p className="mt-1 text-xs text-slate-500">(Paid via {getPaymentMethodLabel(order)})</p>
+              <p className="mt-2 text-xs text-slate-600">Payment · {getPaymentMethodLabel(order)}</p>
             </div>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5">
-          <div className="flex flex-col items-center text-center">
-            <OrderDetailsIcon name="safe-secure-shield" size={40} className="h-10 w-10" />
-            <p className="mt-3 text-sm font-semibold text-slate-900">Safe & Secure</p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              Your payment is safe with us.
-            </p>
-            <Image
-              src="/images/order-details/safe-secure-illustration.png"
-              alt=""
-              width={120}
-              height={120}
-              className="mt-3 h-16 w-16 object-contain"
-              aria-hidden
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <p className="mb-4 text-sm font-semibold text-slate-900">Manage this order</p>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-labelledby="manage-order-title" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+        <h2 id="manage-order-title" className="border-b border-slate-100 pb-3 text-sm font-semibold text-slate-900">Manage this order</h2>
+        <div className="divide-y divide-slate-100">
           <ActionTile
-            icon={<OrderDetailsIcon name="cancel-order" size={28} className="h-7 w-7" />}
-            label="Cancel Order"
-            tone="red"
-            disabled={!canCancel}
-            onClick={() => setCancelFormOpen(true)}
-          />
-          <ActionTile
-            icon={<OrderDetailsIcon name="download-invoice" size={28} className="h-7 w-7" />}
-            label={invoicePending ? "Downloading…" : "Download Invoice"}
-            tone="green"
+            icon={<OrderDetailsIcon name="download-invoice" size={18} className="size-[18px]" />}
+            label={invoicePending ? "Downloading…" : "Download invoice"}
             disabled={invoicePending}
             onClick={() => void handleInvoiceClick()}
           />
           <ActionTile
-            icon={<OrderDetailsIcon name="return-replace" size={28} className="h-7 w-7" />}
-            label="Return / Replace"
+            icon={<OrderDetailsIcon name="return-replace" size={18} className="size-[18px]" />}
+            label="Return or replace"
             subtext={
               cardActions?.showReturn
                 ? undefined
                 : existingReturn
                   ? `${existingReturn.type} request: ${existingReturn.status}`
-                  : "Available after delivery"
+                  : "Currently unavailable for this order"
             }
-            tone="orange"
             disabled={!cardActions?.showReturn}
             onClick={() => setReturnFormOpen(true)}
           />
           <ActionTile
-            icon={<OrderDetailsIcon name="buy-again" size={28} className="h-7 w-7" />}
-            label="Buy Again"
-            tone="blue"
+            icon={<OrderDetailsIcon name="buy-again" size={18} className="size-[18px]" />}
+            label={buyAgainPending ? "Adding to cart…" : "Buy again"}
             disabled={!buyAgainItems.length || buyAgainPending || addToCart.isPending}
             onClick={() => void handleBuyAgain()}
+          />
+          <ActionTile
+            icon={<OrderDetailsIcon name="cancel-order" size={18} className="size-[18px]" />}
+            label="Cancel order"
+            subtext={!canCancel ? "Currently unavailable for this order" : undefined}
+            disabled={!canCancel}
+            onClick={() => setCancelFormOpen(true)}
           />
         </div>
 
         {returnSuccess ? (
-          <p className="mt-4 text-sm font-semibold text-[#326b29]">{returnSuccess}</p>
+          <p role="status" className="mt-4 text-sm font-semibold text-[#326b29]">{returnSuccess}</p>
         ) : null}
         {returnError ? (
-          <p className="mt-4 text-sm font-semibold text-[#D92D20]">{returnError}</p>
+          <p role="alert" className="mt-4 text-sm font-semibold text-[#D92D20]">{returnError}</p>
         ) : null}
-      </div>
+      </section>
 
       <Link
         href="/account/orders"

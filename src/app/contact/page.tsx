@@ -1,20 +1,27 @@
 import { Headphones, Mail, MapPin, Phone, Send } from "lucide-react";
 import Link from "next/link";
+import type { Metadata } from "next";
+import { storefrontSupport } from "@/lib/storefront-links";
+
+export const metadata: Metadata = {
+  title: "Contact and support",
+  description: "Contact OWEG by phone or email for help with orders, delivery, returns, warranty, and seller enquiries.",
+};
 
 const channels = [
   {
     title: "Call us",
     copy: "Speak with a human for orders, delivery ETA, or installation help.",
-    action: "+91 8797787877",
+    action: storefrontSupport.phone,
     icon: Phone,
-    href: "tel:+918797787877",
+    href: storefrontSupport.phoneHref,
   },
   {
     title: "Priority email",
     copy: "Drop a note for warranty, returns, or corporate orders.",
-    action: "owegonline@oweg.in",
+    action: storefrontSupport.email,
     icon: Mail,
-    href: "mailto:owegonline@oweg.in",
+    href: `mailto:${storefrontSupport.email}`,
   },
   {
     title: "Visit",
@@ -52,9 +59,9 @@ export default function ContactPage() {
               </div>
               <h3 className="mt-4 text-base font-semibold sm:text-lg">{ch.title}</h3>
               <p className="mt-2 text-sm text-[var(--oweg-ink-muted)]">{ch.copy}</p>
-              <div className="mt-3 inline-flex items-center gap-2 font-semibold text-[var(--oweg-green-dark)]">
-                {ch.action}
-                <Send className="w-4 h-4 translate-x-0 group-hover:translate-x-1 transition" />
+              <div className="mt-3 flex min-w-0 items-center gap-2 font-semibold text-[var(--oweg-green-dark)]">
+                <span className="min-w-0 [overflow-wrap:anywhere]">{ch.action}</span>
+                <Send className="size-4 shrink-0 translate-x-0 transition group-hover:translate-x-1" aria-hidden="true" />
               </div>
             </Link>
           ))}
