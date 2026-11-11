@@ -11,6 +11,8 @@ require('../my-medusa-store/node_modules/ts-node').register({
 })
 const { enqueueOrderEmail, processOrderEmails } = require('../my-medusa-store/src/services/order-email/outbox.ts')
 const { renderOrderEmail, storefrontOrigin } = require('../my-medusa-store/src/services/order-email/template.ts')
+const { SmtpReplyError } = require('../my-medusa-store/src/lib/password-reset/mailer.ts')
+const { passwordResetConfig } = require('../my-medusa-store/src/lib/password-reset/config.ts')
 const orderEmail = require('../my-medusa-store/src/subscribers/order-email.ts')
 
 const schema = fs.readFileSync(path.join(__dirname, '../my-medusa-store/migrations/order-email-outbox.sql'), 'utf8')
@@ -31,10 +33,16 @@ async function fixture(t) {
   `)
   await db.exec(schema)
   await db.exec(schema)
-  const env = { ORDER_EMAIL_ENABLED: 'true', RESEND_API_KEY: 'test-only', RESEND_FROM: 'OWEG <orders@example.test>', ORDER_EMAIL_STOREFRONT_URL: origin }
+  const env = { ORDER_EMAIL_ENABLED: 'true', ORDER_EMAIL_STOREFRONT_URL: origin }
+  const originalSmtp = { ...passwordResetConfig.smtp }
+  Object.assign(passwordResetConfig.smtp, {
+    host: 'smtp.example.test', port: 465, user: 'test-only', password: 'test-only',
+    fromEmail: 'orders@example.test', fromName: 'OWEG',
+  })
   const previous = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]))
   Object.assign(process.env, env)
   t.after(() => {
+    Object.assign(passwordResetConfig.smtp, originalSmtp)
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
@@ -102,42 +110,67 @@ test('dedupes native and tracking signals and rejects draft, suppressed, unfinis
   await enqueueOrderEmail({ fulfillmentId: 'ful_1' }, 'order_delivered', database)
 
   const sent = []
-  const request = async (_url, init) => {
-    sent.push({ key: init.headers['Idempotency-Key'], body: JSON.parse(init.body) })
-    return Response.json({ id: 'provider-fixture' })
+  const send = async (message, options) => {
+    await options.beforeData()
+    sent.push({ message, id: options.messageId })
   }
-  await Promise.all([processOrderEmails(database, request, logger), processOrderEmails(database, request, logger)])
+  await Promise.all([processOrderEmails(database, send, logger), processOrderEmails(database, send, logger)])
   assert.equal(sent.length, 4)
-  assert.equal(new Set(sent.map(item => item.key)).size, 4)
-  assert.ok(sent.every(item => item.body.to[0] === recipient && item.body.html.includes(origin)))
-  const cancelled = sent.find(item => item.body.subject.startsWith('Order cancelled'))
-  assert.match(cancelled.body.html, /Out of stock/)
-  assert.doesNotMatch(cancelled.body.html, /Internal only/)
+  assert.equal(new Set(sent.map(item => item.id)).size, 4)
+  assert.ok(sent.every(({ message }) => message.to === recipient && message.htmlBody.includes(origin) && message.textBody.includes(origin)))
+  const { message: cancelled } = sent.find(item => item.message.subject.startsWith('Order cancelled'))
+  assert.match(cancelled.htmlBody, /Out of stock/)
+  assert.doesNotMatch(cancelled.htmlBody, /Internal only/)
   const { rows } = await db.query('SELECT status, provider_id FROM oweg_order_email_outbox')
-  assert.ok(rows.every(row => row.status === 'accepted' && row.provider_id === 'provider-fixture'))
+  assert.ok(rows.every(row => row.status === 'accepted' && row.provider_id === null))
 })
 
-test('retries an ambiguous send with the same body and key, then stops on changed recipient', async t => {
+test('retries a temporary SMTP rejection with the same content and Message-ID, then stops on changed recipient', async t => {
   const { db, database, insert } = await fixture(t)
   await insert('order_retry')
   await enqueueOrderEmail({ orderId: 'order_retry' }, 'order_placed', database)
   const received = []
-  const request = async (_url, init) => {
-    received.push([init.headers['Idempotency-Key'], init.body])
-    throw new Error('connection closed')
+  const send = async (message, options) => {
+    await options.beforeData()
+    received.push([options.messageId, message])
+    throw new SmtpReplyError(451, 'temporary relay failure')
   }
-  await processOrderEmails(database, request, logger)
-  await processOrderEmails(database, request, logger)
+  await processOrderEmails(database, send, logger)
+  await processOrderEmails(database, send, logger)
   assert.equal(received.length, 1)
   await db.exec('UPDATE oweg_order_email_outbox SET available_at = now()')
-  await processOrderEmails(database, request, logger)
+  await processOrderEmails(database, send, logger)
   assert.deepEqual(received[0], received[1])
   await db.exec(`UPDATE "order" SET email='other@example.test';
     UPDATE oweg_order_email_outbox SET available_at = now()`)
-  await processOrderEmails(database, request, logger)
+  await processOrderEmails(database, send, logger)
   assert.equal(received.length, 2)
   const { rows: [row] } = await db.query('SELECT status, last_error FROM oweg_order_email_outbox')
   assert.deepEqual(row, { status: 'failed', last_error: 'request_changed_after_attempt' })
+})
+
+test('holds ambiguous SMTP delivery and recovers a crash after relay acceptance without resending', async t => {
+  const { db, database, insert } = await fixture(t)
+  await insert('order_unknown')
+  await enqueueOrderEmail({ orderId: 'order_unknown' }, 'order_placed', database)
+  await processOrderEmails(database, async (_message, options) => {
+    await options.beforeData()
+    throw new Error('connection lost after DATA')
+  }, logger)
+
+  await insert('order_crash')
+  await enqueueOrderEmail({ orderId: 'order_crash' }, 'order_placed', database)
+  const interrupted = { query: (sql, params) => {
+    if (sql.includes('SET status = $3')) throw new Error('database unavailable')
+    return database.query(sql, params)
+  } }
+  await assert.rejects(processOrderEmails(interrupted, async (_message, options) => {
+    await options.beforeData()
+  }, logger), /database unavailable/)
+  await db.exec('UPDATE oweg_order_email_outbox SET available_at = now()')
+  await processOrderEmails(database, async () => assert.fail('ambiguous mail must not be resent'), logger)
+  const { rows } = await db.query('SELECT status, last_error FROM oweg_order_email_outbox')
+  assert.deepEqual(rows, Array(2).fill({ status: 'failed', last_error: 'smtp_delivery_unknown' }))
 })
 
 test('expires old attempts and skips a missing recipient without sending', async t => {

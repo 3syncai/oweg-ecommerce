@@ -202,13 +202,16 @@ function OrderCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-start gap-2 border-t border-slate-100 px-4 py-3 sm:px-5">
-        <Link href={trackFirst ? trackHref : detailHref} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#145448] px-3 py-2 text-sm font-semibold text-white hover:bg-[#103e36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">
-          <AccountHubIcon name={trackFirst ? "track-order" : "view-details"} size={16} className="size-4" />
-          {trackFirst ? "Track order" : "View order details"}
+      <div className={cn(
+        "grid items-stretch gap-2 border-t border-slate-100 px-3 py-3 sm:flex sm:items-start sm:px-5",
+        moreActions && "grid-cols-[minmax(0,1fr)_auto]",
+      )}>
+        <Link href={trackFirst ? trackHref : detailHref} aria-label={trackFirst ? undefined : "View order details"} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#145448] px-2.5 py-2 text-center text-xs font-semibold text-white hover:bg-[#103e36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 sm:gap-2 sm:px-3 sm:text-sm">
+          <AccountHubIcon name={trackFirst ? "track-order" : "view-details"} size={16} className="size-4 shrink-0" />
+          {trackFirst ? "Track order" : <><span className="sm:hidden">Order details</span><span className="hidden sm:inline">View order details</span></>}
         </Link>
         {moreActions && (
-          <div ref={actionsRef} className="relative ml-auto min-w-0" onBlur={(event) => {
+          <div ref={actionsRef} className="relative min-w-0 sm:ml-auto" onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget)) setActionsOpen(false);
           }} onKeyDown={(event) => {
             if (event.key === "Escape" && actionsOpen) {
@@ -217,7 +220,7 @@ function OrderCard({
               actionsButtonRef.current?.focus();
             }
           }}>
-            <button type="button" ref={actionsButtonRef} aria-expanded={actionsOpen} onClick={() => setActionsOpen(open => !open)} className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2">
+            <button type="button" ref={actionsButtonRef} aria-expanded={actionsOpen} onClick={() => setActionsOpen(open => !open)} className="flex h-full min-h-11 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 sm:gap-2 sm:px-3 sm:text-sm">
               More actions <ChevronDown className={cn("size-4 shrink-0", actionsOpen && "rotate-180")} aria-hidden />
             </button>
             {actionsOpen && <div className="absolute right-0 top-full z-20 mt-2 grid w-48 gap-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">

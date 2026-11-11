@@ -82,7 +82,7 @@ async function checkOrderScreens(browser) {
     metadata: { shiprocket_status: 'delivered', shiprocket_awb: 'REF-123', shiprocket_delivered_at: new Date().toISOString() },
     items: [{ id: 'line_qa', title: 'Fixture USB hub', product_id: 'prod_qa', product_handle: 'fixture-hub', variant_id: 'variant_qa', thumbnail: '/oweg_logo.png', quantity: 1, unit_price: 682 }],
   };
-  for (const width of [320, 390, 1280]) {
+  for (const width of [320, 375, 517, 1280]) {
     const qa = await fixture(browser, width, { orders: [order] });
     await qa.go('/account');
     await qa.page.getByRole('heading', { name: 'Your account', exact: true }).waitFor();
@@ -100,6 +100,11 @@ async function checkOrderScreens(browser) {
     const trigger = qa.page.getByRole('button', { name: 'More actions' });
     const card = qa.page.locator('article').filter({ has: trigger });
     const before = await card.boundingBox();
+    const details = await card.getByRole('link', { name: 'View order details' }).boundingBox();
+    const more = await trigger.boundingBox();
+    assert.ok(details && more && Math.abs(details.y - more.y) < 1, `Order actions should share a row at ${width}px`);
+    assert.ok(details.x + details.width <= more.x && more.x + more.width <= before.x + before.width);
+    assert.ok(details.height >= 44 && more.height >= 44);
     await trigger.click();
     const track = card.getByRole('link', { name: 'Track order' });
     await track.waitFor();

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import { getSharedDbPool } from "../../lib/db-pool"
+import { hasPasswordResetMailerConfig, passwordResetConfig } from "../../lib/password-reset/config"
+import { sendTransactionalEmail, SmtpReplyError } from "../../lib/password-reset/mailer"
 import { renderOrderEmail, storefrontOrigin, type OrderEmailEvent } from "./template"
 
 type Database = Pick<ReturnType<typeof getSharedDbPool>, "query">
@@ -47,50 +49,8 @@ export async function recordTrackingEmail(orderId: string, event: OrderEmailEven
   }
 }
 
-class SendError extends Error {
-  constructor(
-    public code: string,
-    public retryable: boolean,
-    public delaySeconds = 0
-  ) {
-    super(code)
-  }
-}
-
-async function sendEmail(body: string, id: string, key: string, request: typeof fetch) {
-  let response: Response
-  try {
-    response = await request("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": `oweg-order-email/${id}`,
-      },
-      body,
-      redirect: "error",
-      signal: AbortSignal.timeout(8000),
-    })
-  } catch {
-    throw new SendError("provider_connection", true)
-  }
-
-  if (!response.ok) {
-    const details = response.status === 409 ? await response.json().catch(() => null) : null
-    const retryable = response.status >= 500 || [408, 429].includes(response.status) ||
-      details?.name === "concurrent_idempotent_requests"
-    const retryAfter = response.headers.get("retry-after")
-    const delay = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) : 0
-    await response.body?.cancel().catch(() => {})
-    throw new SendError(`provider_http_${response.status}`, retryable, delay)
-  }
-
-  const result = await response.json().catch(() => null)
-  if (typeof result?.id !== "string" || !result.id || result.id.length > 128) {
-    throw new SendError("provider_receipt_missing", true)
-  }
-  return result.id
-}
+const SMTP_IN_PROGRESS = "smtp_data_in_progress"
+const SMTP_UNKNOWN = "smtp_delivery_unknown"
 
 type OutboxRow = {
   id: string
@@ -99,17 +59,17 @@ type OutboxRow = {
   attempts: number
   first_attempt_at: Date
   request_hash: string | null
+  last_error: string | null
 }
 
 export async function processOrderEmails(
   database?: Database,
-  request: typeof fetch = fetch,
+  send: typeof sendTransactionalEmail = sendTransactionalEmail,
   logger: Logger = console
 ) {
   if (process.env.ORDER_EMAIL_ENABLED !== "true") return
-  const key = process.env.RESEND_API_KEY?.trim()
-  const from = process.env.RESEND_FROM?.trim()
-  if (!key || !from) throw new Error("missing_email_provider_config")
+  if (!hasPasswordResetMailerConfig()) throw new Error("missing_smtp_config")
+  const { fromEmail, fromName } = passwordResetConfig.smtp
   const origin = storefrontOrigin(process.env.ORDER_EMAIL_STOREFRONT_URL || process.env.STOREFRONT_URL)
   const db = database ?? getSharedDbPool()
 
@@ -122,16 +82,16 @@ export async function processOrderEmails(
        updated_at = now() WHERE id = (
          SELECT id FROM oweg_order_email_outbox WHERE status = 'pending' AND available_at <= now()
          ORDER BY available_at, id LIMIT 1 FOR UPDATE SKIP LOCKED
-       ) RETURNING id, order_id, event_type, attempts, first_attempt_at, request_hash`,
+       ) RETURNING id, order_id, event_type, attempts, first_attempt_at, request_hash, last_error`,
       [lease]
     )
     if (!row) break
 
     let status = "failed"
-    let reason: string | null = "retry_window_elapsed"
-    let providerId: string | null = null
+    let reason: string | null = row.last_error === SMTP_IN_PROGRESS ? SMTP_UNKNOWN : "retry_window_elapsed"
     let delay = 0
-    if (row.attempts <= MAX_ATTEMPTS && Date.now() - new Date(row.first_attempt_at).getTime() < RETRY_WINDOW_MS) {
+    if (reason !== SMTP_UNKNOWN && row.attempts <= MAX_ATTEMPTS &&
+        Date.now() - new Date(row.first_attempt_at).getTime() < RETRY_WINDOW_MS) {
       const { rows: [order] } = await db.query<{ email: string | null; display_id: number | null; cancellation_reason: string | null }>(
         `SELECT email, display_id,
            CASE WHEN $2 = 'order_cancelled' AND metadata->>'cancellation_source' = 'admin'
@@ -151,7 +111,7 @@ export async function processOrderEmails(
           event: row.event_type, orderId: row.order_id, displayId: order.display_id,
           origin, cancellationReason: order.cancellation_reason,
         })
-        const body = JSON.stringify({ from, to: [email], ...content })
+        const body = JSON.stringify({ transport: "smtp", fromEmail, fromName, to: email, ...content })
         const hash = createHash("sha256").update(body).digest("hex")
         reason = "request_changed_after_attempt"
         if (!row.request_hash || row.request_hash === hash) {
@@ -161,15 +121,37 @@ export async function processOrderEmails(
             [row.id, lease, hash]
           )
           if (fenced.rowCount !== 1) continue
+          let dataStarted = false
           try {
-            providerId = await sendEmail(body, row.id, key, request)
+            await send({
+              to: email,
+              subject: content.subject,
+              heading: content.subject,
+              intro: content.subject,
+              htmlBody: content.html,
+              textBody: content.text,
+            }, {
+              messageId: `oweg-order-email-${row.id}`,
+              beforeData: async () => {
+                const result = await db.query(
+                  `UPDATE oweg_order_email_outbox SET last_error = $3,
+                   available_at = now() + interval '2 minutes'
+                   WHERE id = $1 AND lease_token = $2 AND available_at > now()`,
+                  [row.id, lease, SMTP_IN_PROGRESS]
+                )
+                if (result.rowCount !== 1) throw new Error("order_email_lease_lost")
+                dataStarted = true
+              },
+            })
             status = "accepted"
             reason = null
           } catch (error) {
-            if (!(error instanceof SendError)) throw error
-            reason = error.code
-            delay = Math.max(Math.min(3600, 30 * 2 ** row.attempts), error.delaySeconds)
-            if (error.retryable && row.attempts < MAX_ATTEMPTS &&
+            const reply = error instanceof SmtpReplyError ? error.replyCode : null
+            const rejected = reply !== null && reply >= 400 && reply < 600
+            const retryable = rejected ? reply < 500 : !dataStarted
+            reason = rejected ? `smtp_reply_${reply}` : dataStarted ? SMTP_UNKNOWN : "smtp_connection"
+            delay = Math.min(3600, 30 * 2 ** row.attempts)
+            if (retryable && row.attempts < MAX_ATTEMPTS &&
                 Date.now() - new Date(row.first_attempt_at).getTime() + delay * 1000 < RETRY_WINDOW_MS) {
               status = "pending"
             }
@@ -179,12 +161,12 @@ export async function processOrderEmails(
     }
 
     await db.query(
-      `UPDATE oweg_order_email_outbox SET status = $3, last_error = $4, provider_id = $5,
-       available_at = now() + ($6 * interval '1 second'), lease_token = NULL, updated_at = now()
+      `UPDATE oweg_order_email_outbox SET status = $3, last_error = $4,
+       available_at = now() + ($5 * interval '1 second'), lease_token = NULL, updated_at = now()
        WHERE id = $1 AND lease_token = $2`,
-      [row.id, lease, status, reason, providerId, status === "pending" ? delay : 0]
+      [row.id, lease, status, reason, status === "pending" ? delay : 0]
     )
     if (status === "failed") logger.warn(`[order-email] failed id=${row.id} event=${row.event_type} reason=${reason}`)
-    if (reason === "provider_http_429") break
+    if (reason === "smtp_connection" || reason === "smtp_reply_421") break
   }
 }
