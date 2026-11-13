@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Facebook, Twitter, Instagram, Youtube, ChevronDown } from "lucide-react";
+import { Facebook, Instagram, Youtube, ChevronDown } from "lucide-react";
 import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks, storefrontSupport } from "@/lib/storefront-links";
 import styles from "./Footer.module.css";
 
@@ -107,16 +107,18 @@ const Footer = ({ year }: { year: number }) => {
           <div className="col-span-2 lg:col-span-1">
             <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Connect With Us</h3>
             <div className="flex gap-5 md:gap-6">
-              <a href="https://www.facebook.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="Facebook">
+              <a href="https://www.facebook.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link social-facebook" aria-label="Facebook">
                 <Facebook className="h-6 w-6" />
               </a>
-              <a href="https://x.com/owegonline" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="X (Twitter)">
-                <Twitter className="h-6 w-6" />
+              <a href="https://x.com/owegonline" target="_blank" rel="noopener noreferrer" className="icon-link social-x" aria-label="X (Twitter)">
+                <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6" aria-hidden="true">
+                  <path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3l-4.9-7.4L5.5 22H2.3l7.3-8.4L1.9 2h6.4l4.5 6.8L18.9 2ZM17.8 20h1.7L7.3 3.9H5.4L17.8 20Z" />
+                </svg>
               </a>
-              <a href="https://www.instagram.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="Instagram">
+              <a href="https://www.instagram.com/owegonline/" target="_blank" rel="noopener noreferrer" className="icon-link social-instagram" aria-label="Instagram">
                 <Instagram className="h-6 w-6" />
               </a>
-              <a href="https://www.youtube.com/@owegonline" target="_blank" rel="noopener noreferrer" className="icon-link" aria-label="YouTube">
+              <a href="https://www.youtube.com/@owegonline" target="_blank" rel="noopener noreferrer" className="icon-link social-youtube" aria-label="YouTube">
                 <Youtube className="h-6 w-6" />
               </a>
             </div>
@@ -220,11 +222,23 @@ const Footer = ({ year }: { year: number }) => {
 
         .footer-root .icon-link {
           color: var(--footer-text);
-          transition: color 200ms ease, transform 200ms ease;
+          border-radius: 8px;
+          width: 36px;
+          height: 36px;
+          transition: color 200ms ease, background-color 200ms ease;
         }
-        .footer-root .icon-link:hover {
-          color: var(--footer-hover);
-          transform: translateY(-3px);
+        .footer-root .icon-link:is(:hover, :focus-visible) {
+          color: #fff;
+        }
+        .footer-root .social-facebook:is(:hover, :focus-visible) { background: #0866ff; }
+        .footer-root .social-facebook:is(:hover, :focus-visible) :global(svg) { fill: currentColor; }
+        .footer-root .social-x:is(:hover, :focus-visible) { background: #000; box-shadow: inset 0 0 0 1px #ffffff50; }
+        .footer-root .social-instagram:is(:hover, :focus-visible) { background: linear-gradient(35deg, #feda75, #d62976 55%, #4f5bd5); }
+        .footer-root .social-youtube:is(:hover, :focus-visible) { background: #f00; }
+        .footer-root .social-youtube:is(:hover, :focus-visible) :global(svg path:first-child) { fill: #fff; }
+        .footer-root .social-youtube:is(:hover, :focus-visible) :global(svg path:last-child) { fill: #f00; stroke: #f00; }
+        @media (prefers-reduced-motion: reduce) {
+          .footer-root .icon-link { transition: none; }
         }
 
         .footer-root .border-top {

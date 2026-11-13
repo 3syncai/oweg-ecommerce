@@ -24,7 +24,7 @@ import {
 } from "@/hooks/useAccountOrdersSummary";
 import { useAddToCart } from "@/hooks/useCartMutations";
 import { getOrderCardActions } from "@/lib/order-actions";
-import { buildOrderHref, buildOrderItemProductHref, buildTrackHref, resolveOrderLineItemsForCart } from "@/lib/order-utils";
+import { buildOrderHref, buildOrderItemProductHref, buildOrderItemReviewHref, buildTrackHref, resolveOrderLineItemsForCart } from "@/lib/order-utils";
 import { formatAccountCurrency, formatAccountDate } from "@/lib/account-utils";
 import { useAuth } from "@/contexts/AuthProvider";
 import { cn } from "@/lib/utils";
@@ -117,6 +117,10 @@ function OrderCard({
   const variantId = resolveVariantId(order);
   const orderLabel = order.display_id == null ? null : `#${order.display_id}`;
   const detailHref = buildOrderHref(order.id, order.display_id);
+  const reviewLinks = bucket === "delivered"
+    ? [...new Set((order.items ?? []).map(buildOrderItemReviewHref).filter(Boolean))]
+    : [];
+  const reviewHref = reviewLinks.length > 1 ? `${detailHref}#order-items` : reviewLinks[0];
   const trackHref = buildTrackHref(order.id, order.display_id);
   const cardActions = getOrderCardActions(order);
   const StatusIcon = STATUS_STYLE[bucket].icon;
@@ -201,6 +205,14 @@ function OrderCard({
           ) : null}
         </div>
       </div>
+
+      {reviewHref && (
+        <div className="px-4 pb-3 sm:px-5">
+          <Link href={reviewHref} prefetch={false} className="inline-flex min-h-11 items-center rounded-lg border border-[#145448]/25 px-3 text-sm font-semibold text-[#145448] hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-offset-2">
+            {reviewLinks.length > 1 ? "Rate & review items" : "Rate & review"}
+          </Link>
+        </div>
+      )}
 
       <div className={cn(
         "grid items-stretch gap-2 border-t border-slate-100 px-3 py-3 sm:flex sm:items-start sm:px-5",

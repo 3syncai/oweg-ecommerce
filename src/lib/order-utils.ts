@@ -153,6 +153,11 @@ export function buildOrderItemProductHref(item?: OrderItem): string | null {
   return `/productDetail/${encodeURIComponent(key)}`;
 }
 
+export function buildOrderItemReviewHref(item?: OrderItem): string | null {
+  const href = buildOrderItemProductHref(item);
+  return href ? `${href}?tab=reviews#write-review` : null;
+}
+
 export function buildTrackHref(orderId: string, displayId?: number | null) {
   const base = `/account/orders/${encodeURIComponent(orderId)}/track`;
   if (displayId != null) return `${base}?orderNo=${displayId}`;

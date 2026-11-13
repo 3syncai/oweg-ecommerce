@@ -38,7 +38,6 @@ type ProfileLink = { label: string; href: string };
 
 const accountLinks: ProfileLink[] = [
   { label: "Notifications", href: "/account/notifications" },
-  { label: "Brands", href: "/brands" },
   { label: "Affiliates", href: "/affiliates" },
   { label: "My Reward", href: "/my-reward" },
   { label: "My Wishlist", href: "/wishlist" },
@@ -60,7 +59,6 @@ function IconTile({ children }: { children: ReactNode }) {
 function accountIcon(label: string) {
   const lower = label.toLowerCase();
   if (lower.includes("notification")) return <Bell className={iconTone} />;
-  if (lower.includes("brand")) return <Store className={iconTone} />;
   if (lower.includes("reward")) return <Trophy className={iconTone} />;
   if (lower.includes("wishlist")) return <Heart className={iconTone} />;
   if (lower.includes("affiliate")) return <Users className={iconTone} />;

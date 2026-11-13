@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useCart, getCartQueryKey, writeCartQueryCache } from "@/hooks/useCart";
@@ -12,6 +12,9 @@ type CartSummaryContextValue = {
   syncFromCartPayload: (payload?: CartApiPayload) => void;
 };
 const CartSummaryContext = createContext<CartSummaryContextValue | undefined>(undefined);
+const subscribeToHydration = () => () => {};
+const getClientSnapshot = () => true;
+const getServerSnapshot = () => false;
 
 export default function CartProvider({ children }: { children: ReactNode }) {
   const { customer } = useAuth();
@@ -37,6 +40,12 @@ export default function CartProvider({ children }: { children: ReactNode }) {
 
 export function useCartSummary(): CartSummaryContextValue {
   const value = useContext(CartSummaryContext);
-  if (!value) throw new Error("useCartSummary must be used within CartProvider");
-  return value;
+  // Each consumer can hydrate after the provider has already loaded the cart.
+  const hydrated = useSyncExternalStore(subscribeToHydration, getClientSnapshot, getServerSnapshot);
+  const summary = useMemo(
+    () => value && (hydrated ? value : { ...value, count: 0 }),
+    [hydrated, value]
+  );
+  if (!summary) throw new Error("useCartSummary must be used within CartProvider");
+  return summary;
 }

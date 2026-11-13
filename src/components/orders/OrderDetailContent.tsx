@@ -17,10 +17,12 @@ import OrderDetailsIcon, {
 import { useAddToCart } from "@/hooks/useCartMutations";
 import { useOrderDetail } from "@/hooks/useOrderDetail";
 import { getOrderCardActions } from "@/lib/order-actions";
+import { resolveOrderBucket } from "@/hooks/useAccountOrdersSummary";
 import { getCurrentTrackerStepLabel } from "@/lib/order-tracker";
 import {
   buildTrackHref,
   buildOrderItemProductHref,
+  buildOrderItemReviewHref,
   formatOrderCurrency,
   formatOrderDateTime,
   formatShippingAddress,
@@ -145,6 +147,7 @@ export default function OrderDetailContent({
   const addToCart = useAddToCart();
   const [buyAgainPending, setBuyAgainPending] = useState(false);
   const initialActionHandledRef = useRef(false);
+  const itemsRef = useRef<HTMLHeadingElement>(null);
 
   const {
     order,
@@ -197,6 +200,13 @@ export default function OrderDetailContent({
     resetReturnForm,
     submitReturnRequest,
   } = detail;
+  const canReviewItems = Boolean(order && resolveOrderBucket(order) === "delivered");
+
+  useEffect(() => {
+    if (!order?.id || window.location.hash !== "#order-items") return;
+    itemsRef.current?.focus({ preventScroll: true });
+    itemsRef.current?.scrollIntoView({ block: "start" });
+  }, [order?.id]);
 
   useEffect(() => {
     if (!order || !initialAction || initialActionHandledRef.current) return;
@@ -570,11 +580,14 @@ export default function OrderDetailContent({
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
         <div className="mb-4 flex items-center gap-2">
           <OrderDetailsIcon name="product-item" size={18} className="h-[18px] w-[18px]" />
-          <p className="text-sm font-semibold text-slate-900">Order Items ({itemCount})</p>
+          <h2 id="order-items" ref={itemsRef} tabIndex={-1} className="scroll-mt-[calc(var(--app-header-height,136px)+1rem)] text-sm font-semibold text-slate-900">Order Items ({itemCount})</h2>
         </div>
         <div className="divide-y divide-slate-100">
           {(order?.items || []).map((item) => {
             const productHref = buildOrderItemProductHref(item);
+            const reviewHref = canReviewItems
+              ? buildOrderItemReviewHref(item)
+              : null;
             const summary = (
               <>
                 <OrderItemThumbnail src={item.thumbnail} />
@@ -585,11 +598,18 @@ export default function OrderDetailContent({
               </>
             );
             return <div key={item.id} className="flex items-start gap-3 py-4 sm:gap-4">
+              <div className="min-w-0 flex-1">
               {productHref ? (
                 <Link href={productHref} prefetch={false} className="group flex min-w-0 flex-1 items-start gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700">{summary}</Link>
               ) : (
                 <div className="flex min-w-0 flex-1 items-start gap-3">{summary}</div>
               )}
+              {reviewHref && (
+                <Link href={reviewHref} prefetch={false} aria-label={`Rate & review ${item.title || "order item"}`} className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-[#145448]/25 px-3 text-sm font-semibold text-[#145448] hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-offset-2">
+                  Rate &amp; review
+                </Link>
+              )}
+              </div>
               <p className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">
                 {formatOrderCurrency(
                   item.total ?? (item.unit_price || 0) * (item.quantity || 1),

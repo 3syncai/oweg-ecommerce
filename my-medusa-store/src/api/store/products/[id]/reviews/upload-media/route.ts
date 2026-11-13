@@ -77,15 +77,6 @@ function getS3Config() {
 }
 
 // Sanitize string for use in file paths
-function sanitizeForPath(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/[^a-zA-Z0-9-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, 50) || 'product'
-}
-
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   setCorsHeaders(res, req)
   
@@ -102,7 +93,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   
   try {
     const { id: productId } = req.params
-    if (!productId) {
+    if (!productId || !/^prod_[a-z0-9_-]+$/i.test(productId)) {
       return res.status(400).json({ message: "Product ID is required" })
     }
 
@@ -126,7 +117,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       },
     })
 
-    const s3FileUrl = process.env.S3_FILE_URL || `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`
+    const s3FileUrl = (process.env.S3_FILE_URL || `https://${s3Bucket}.s3.${s3Region}.amazonaws.com`).replace(/\/+$/, '')
 
     const headers = (req as any).headers || {}
     const bb = boundedUpload(headers, res)
@@ -135,9 +126,6 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     let pendingUploads = 0
     let busboyFinished = false
     
-    // Get product name from form fields
-    let productName = ''
-
     const finished = new Promise<void>((resolve, reject) => {
       let resolved = false
       const timeout = setTimeout(() => {
@@ -164,13 +152,10 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         
         const filename = (info.filename || "file").replace(/[^a-zA-Z0-9._-]/g, "_")
         const extension = path.extname(filename) || '.png'
-        const uniqueId = randomUUID().substring(0, 8)
+        const uniqueId = randomUUID()
         const imageFilename = `${uniqueId}${extension}`
         
-        // Build S3 path: reviews/productname/img.png
-        const currentProductName = productName || 'product'
-        const sanitizedProductName = sanitizeForPath(currentProductName)
-        const s3Key = `reviews/${sanitizedProductName}/${imageFilename}`
+        const s3Key = `reviews/${productId}/${imageFilename}`
         
         // Read file into buffer
         const fileChunks: Buffer[] = []
@@ -249,13 +234,6 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
             reject(err)
           }
         })
-      })
-
-      bb.on("field", (name: string, value: string) => {
-        console.log("Field received:", name, value)
-        if (name === "productName" || name === "product_name") {
-          productName = value || ''
-        }
       })
 
       bb.on("error", (error: any) => {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { appendUpstreamCookies, storeSessionCookieHeader } from "@/lib/medusa-auth"
 
 const MEDUSA_BACKEND_URL = process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000"
 const PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_API_KEY
@@ -15,17 +16,13 @@ async function backend(path: string, init?: RequestInit) {
     (headers as Record<string, string>)["x-sales-channel-id"] = SALES_CHANNEL_ID
   }
   
-  // For FormData, don't set content-type - fetch will set it automatically with boundary
-  // Only add custom headers if body is not FormData
-  const isFormData = init?.body instanceof FormData
-  if (!isFormData && init?.headers) {
-    Object.assign(headers, init.headers)
-  }
+  // Fetch generates the multipart boundary from the FormData body.
+  Object.assign(headers, init?.headers)
   
   return fetch(`${base}${path}`, {
     cache: "no-store",
     ...init,
-    headers: isFormData ? headers : { ...headers, ...(init?.headers as HeadersInit) },
+    headers,
   })
 }
 
@@ -38,13 +35,11 @@ export async function POST(
   try {
     const { id } = await context.params
     
-    // Get the form data from the request
-    const formData = await req.formData()
-    
-    const cookie = req.headers.get("cookie") || ""
+    const cookie = storeSessionCookieHeader(req.headers.get("cookie") || "")
     if (!cookie) {
       return NextResponse.json({ message: "Authentication required" }, { status: 401 })
     }
+    const formData = await req.formData()
 
     // Forward the form data + customer session to the Medusa backend
     const res = await backend(`/store/products/${id}/reviews/upload-media`, {
@@ -66,7 +61,9 @@ export async function POST(
     }
     
     const data = await res.json()
-    return NextResponse.json(data)
+    const response = NextResponse.json(data)
+    appendUpstreamCookies(response, res)
+    return response
   } catch (error) {
     console.error("Error uploading review media:", error)
     const errorMessage = error instanceof Error ? error.message : "Unknown error"

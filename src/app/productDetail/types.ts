@@ -16,6 +16,11 @@ export type RelatedProduct = {
   discount: number
   handle?: string
   variant_id?: string
+  variant_count?: number
+  inventory_quantity?: number
+  limitedDeal?: boolean
+  rating?: number
+  reviewCount?: number
   brand?: string
   color?: string
   highlights?: string[]

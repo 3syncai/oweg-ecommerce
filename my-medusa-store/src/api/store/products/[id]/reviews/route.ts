@@ -39,13 +39,13 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     
     await client.connect()
 
-    // Query reviews from database - show approved reviews and pending reviews
-    // (pending reviews will be visible to users who submitted them)
     const result = await client.query(
-      `SELECT * FROM product_review 
+      `SELECT id, product_id, reviewer_name, title, content, rating, images, videos,
+              verified_purchase, helpful_count, status, created_at, updated_at
+       FROM product_review
        WHERE product_id = $1 
        AND deleted_at IS NULL 
-       AND (status = 'approved' OR status = 'pending')
+       AND status = 'approved'
        ORDER BY created_at DESC`,
       [productId]
     )
@@ -103,13 +103,18 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     const body = (req as any).body || {}
     const { title, content, rating, images, videos, reviewer_name, reviewer_email } = body
 
-    // Validate required fields
-    if (!title || !title.trim()) {
+    const customerId = (req as MedusaRequest & { auth_context?: { actor_id?: string } }).auth_context?.actor_id
+    if (!customerId) {
+      return res.status(401).json({ message: "Please sign in to submit a review." })
+    }
+
+    if (typeof title !== "string" || !title.trim()) {
       return res.status(400).json({ message: "Review title is required" })
     }
 
-    if (!rating) {
-      return res.status(400).json({ message: "Rating is required" })
+    const stars = typeof rating === "string" || typeof rating === "number" ? Number(rating) : NaN
+    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
+      return res.status(400).json({ message: "Choose a rating from 1 to 5 stars." })
     }
 
     // Get database URL from environment
@@ -129,9 +134,6 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     // Generate review ID
     const reviewId = `review_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
 
-    // Get customer ID from auth if available
-    const customerId = (req as any).auth_context?.actor_id || null
-
     // Insert review into database
     await client.query(
       `INSERT INTO product_review (
@@ -147,7 +149,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         reviewer_email || null,
         title.trim(),
         content || '',
-        rating.toString(),
+        stars.toString(),
         images ? JSON.stringify(images) : null,
         videos ? JSON.stringify(videos) : null,
         false, // verified_purchase
@@ -163,7 +165,7 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         product_id: productId,
         title,
         rating,
-        status: 'pending',
+        status: 'approved',
       },
     })
   } catch (error: any) {
