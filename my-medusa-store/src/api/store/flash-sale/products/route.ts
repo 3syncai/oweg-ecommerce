@@ -173,7 +173,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     })
   } catch (error: any) {
     console.error("Error fetching flash sale products:", error)
-    return res.json({ 
+    return res.status(503).json({
       active: false,
       flash_sale: null,
       products: []

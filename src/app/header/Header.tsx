@@ -2,6 +2,7 @@
 
 import React from "react";
 import navStyles from "./HeaderNavigation.module.css";
+import MobileShopMenu from "./MobileShopMenu";
 import { compareCategoryRank } from "@/lib/category-rank";
 import { createPortal } from "react-dom";
 import {
@@ -590,19 +591,34 @@ const Header: React.FC = () => {
     activeCategoryIdRef.current = activeCategoryId;
   }, [activeCategoryId]);
 
-  // For re-positioning on resize/scroll
-  const [, forceRerender] = React.useState(0);
   React.useEffect(() => {
     mountedRef.current = true;
-    const onResize = () => forceRerender((n) => n + 1);
-    window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onResize, true);
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onResize, true);
       mountedRef.current = false;
     };
   }, []);
+
+  // Only open, anchored panels need to follow viewport or scroll changes.
+  const [, forceRerender] = React.useState(0);
+  const hasAnchoredPanel = Boolean(activeCategoryId || allOpen || cartPreviewOpen);
+  React.useEffect(() => {
+    if (!hasAnchoredPanel) return;
+    let frame = 0;
+    const reposition = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        forceRerender(value => value + 1);
+      });
+    };
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, { capture: true, passive: true });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [hasAnchoredPanel]);
 
   // Cleanup menu timers on unmount
   React.useEffect(() => {
@@ -743,12 +759,10 @@ const Header: React.FC = () => {
     handleBreakpoint();
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
-    document.addEventListener("scroll", handleScroll, { passive: true, capture: true });
     return () => {
       window.cancelAnimationFrame(frame);
       mobileHome?.removeEventListener("change", handleBreakpoint);
       window.removeEventListener("scroll", handleScroll);
-      document.removeEventListener("scroll", handleScroll, true);
       if (typeof document !== "undefined") {
         delete document.documentElement.dataset.owegScrollChrome;
       }
@@ -1183,7 +1197,7 @@ const Header: React.FC = () => {
             display: "flex",
             flexDirection: "column",
           }}
-          className="relative min-h-0 rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 transition-transform duration-160 before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5"
+          className={`${navStyles.categoryPanelEntrance} relative min-h-0 rounded-xl bg-white shadow-2xl ring-1 ring-black/5 p-3 border border-gray-100 before:content-[''] before:absolute before:-top-3.5 before:left-0 before:right-0 before:h-3.5`}
           role="menu"
         >
           <CategoryMegaMenu
@@ -1227,7 +1241,7 @@ const Header: React.FC = () => {
             maxHeight: `${Math.min(420, Math.max(180, window.innerHeight - Number(style.top || 0) - 16))}px`,
             pointerEvents: "auto",
           }}
-          className={`${navStyles.departmentsPanel} rounded-xl bg-white p-3 transition-transform duration-160`}
+          className={`${navStyles.departmentsPanel} ${navStyles.categoryPanelEntrance} rounded-xl bg-white p-3`}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               setAllOpen(false);
@@ -1631,6 +1645,7 @@ const Header: React.FC = () => {
                     >
                       {customer ? (
                         <AccountDropdown
+                          customerName={customerName}
                           onSignOutClick={() => {
                             setProfileMenuOpen(false);
                             setLogoutModalOpen(true);
@@ -1686,16 +1701,17 @@ const Header: React.FC = () => {
 
             <div className={`flex flex-col gap-0 md:hidden bg-white ${navStyles.mobileHeaderSurface}`}>
               <div className={`bg-white/95 backdrop-blur border-b border-gray-100 ${navStyles.mobileHeaderSurface}`}>
-                <div className={`flex items-center justify-between gap-2 px-3 pb-2 ${navStyles.mobileBrandRow}`}>
-                  <div className="flex flex-1 items-center gap-2">
+                <div className={`grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2 px-3 pb-2 ${navStyles.mobileBrandRow}`}>
+                  <MobileShopMenu />
+                  <div className="flex min-w-0 justify-center">
                     <Link href="/" className="flex items-center" aria-label="OWEG home">
                       <Image src="/oweg_logo.png" alt="OWEG" width={100} height={28} className="h-7 w-auto" priority />
                     </Link>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex justify-end">
                     <Link
                       href="/notifications"
-                      className="oweg-tap relative flex items-center justify-center rounded-full text-[#7AC943] active:bg-[var(--oweg-surface-tint)]"
+                      className={`oweg-tap ${navStyles.mobileHeaderAction}`}
                       aria-label="Notifications"
                     >
                       <Bell className="w-6 h-6" />

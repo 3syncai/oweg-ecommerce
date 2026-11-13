@@ -120,7 +120,7 @@ export default function RootLayout({
 
                   <main
                     data-storefront-content
-                    className="flex-1 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-0"
+                    className="min-h-svh flex-1 bg-[#fafbf7] md:min-h-0"
                     style={{ paddingTop: "var(--app-header-height, 136px)" }}
                   >
                     {/* Kept inside the header offset so the announcement banner is

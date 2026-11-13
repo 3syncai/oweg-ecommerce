@@ -696,7 +696,7 @@ export default function MobileBottomNav() {
           )}
 
           <div
-            className={`${navStyles.categoryBody} relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
+            className={`${navStyles.categoryBody} min-h-0 transition-all duration-300 ease-in-out ${productsLoading && !filtersOpen ? "" : "relative"} ${selectedSubcategory ? "" : "flex gap-3"}`}
           >
             {!selectedSubcategory && (
               <nav className={navStyles.departmentRail} aria-label="Departments">
@@ -889,7 +889,7 @@ export default function MobileBottomNav() {
                     {selectedSubcategory ? (
                       <div className={navStyles.productGrid} aria-busy={productsLoading}>
                         {productsLoading ? (
-                          <div className="col-span-full">
+                          <div className={filtersOpen ? "col-span-full" : navStyles.centeredProductLoader}>
                             <BrandLoader compact label="Finding your products…" />
                           </div>
                         ) : productsError ? (

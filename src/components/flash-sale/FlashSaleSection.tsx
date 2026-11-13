@@ -61,6 +61,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   const [loading, setLoading] = useState(!initialData)
   const [timeRemaining, setTimeRemaining] = useState(() => flashSaleCountdown(initialData?.flash_sale?.time_remaining_ms ?? 0))
   const [failed, setFailed] = useState(false)
+  const [expiredAt, setExpiredAt] = useState<string | null>(null)
   const fetching = useRef(false)
   const refreshedExpiry = useRef<string | null>(null)
 
@@ -71,7 +72,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
       const query = new URLSearchParams()
       if (inStockOnly) query.set('in_stock', '1')
       if (view === 'all') query.set('all', '1')
-      const response = await axios.get(`/api/medusa/flash-sale/products${query.size ? `?${query}` : ''}`)
+      const response = await axios.get(`/api/medusa/flash-sale/products${query.size ? `?${query}` : ''}`, { timeout: 20000 })
       setFailed(response.status !== 200 || response.data?.unavailable === true)
       setFlashSaleData(response.status === 200 ? response.data : { active: false, flash_sale: null, products: [] })
     } catch {
@@ -106,6 +107,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
       if (remaining > 0) {
         updateCountdown(remaining)
       } else {
+        setExpiredAt(expiresAt)
         setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 })
         // One request per expiry; regular minute polling handles retries.
         if (refreshedExpiry.current !== expiresAt && document.visibilityState !== 'hidden') {
@@ -130,7 +132,8 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
     return view === 'all' ? <div className="oweg-container" role="status"><p>Loading flash sale deals…</p><div className={styles.grid} aria-hidden="true">{Array.from({length: 8}, (_, i) => <div key={i} className={styles.skeleton} />)}</div></div> : <FlashSaleSkeleton />
   }
 
-  if (!flashSaleData?.active || !flashSaleData?.flash_sale || !flashSaleData?.products || flashSaleData.products.length === 0) {
+  const saleExpired = expiredAt !== null && flashSaleData?.flash_sale?.expires_at === expiredAt
+  if (!flashSaleData?.active || !flashSaleData.flash_sale || saleExpired || !flashSaleData.products?.length) {
     return view === 'all' ? <div className="oweg-container space-y-4 py-10">
       <h1 className="oweg-title">Flash sale deals</h1>
       <p role={failed ? 'alert' : 'status'}>{failed ? 'Deals couldn’t load. Please try again.' : 'There are no active in-stock deals right now. Check back soon.'}</p>

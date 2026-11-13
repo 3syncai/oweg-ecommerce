@@ -63,6 +63,8 @@ test('all four templates use only the configured HTTPS origin and accessible tex
     const content = renderOrderEmail({ event, origin, orderId: 'order_fixture', displayId: 123 })
     const tracking = ['order_shipped', 'order_delivered'].includes(event) ? '/track' : ''
     assert.match(content.subject, /OWEG order #123/)
+    assert.ok(content.html.includes(`src="${origin}/oweg_logo.png"`))
+    assert.ok(content.html.includes('alt="OWEG Online Shopping"'))
     assert.ok(content.html.includes(`href="${origin}/account/orders/order_fixture${tracking}?orderNo=123"`))
     assert.ok(content.text.includes(`${origin}/account/orders/order_fixture${tracking}?orderNo=123`))
     assert.ok(content.html.includes(`href="${origin}/contact"`))

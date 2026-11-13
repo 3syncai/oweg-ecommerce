@@ -1,1 +1,59 @@
-.inbox{max-width:880px;margin:auto;padding:28px 20px calc(110px + env(safe-area-inset-bottom));color:#153d32;min-height:60vh}.header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}.eyebrow{font-size:11px;letter-spacing:.12em;color:#607368}.header h1{font-size:28px;font-weight:700;margin:6px 0}.header p,.message p,.empty p{font-size:14px;line-height:1.6;color:#566b62}.settings,.open{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;font-size:14px;font-weight:600;flex-shrink:0}.settings{border:1px solid #d9e4dd;border-radius:999px;padding:8px 14px}.list{display:grid;gap:16px}.message,.empty{background:#fff;border:1px solid #dce6de;border-radius:18px;padding:20px;overflow-wrap:anywhere}.meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#6b7d72;font-size:12px}.meta span{color:#34704e;font-weight:700}.message h2,.empty h2{font-size:18px;font-weight:600;margin:12px 0 8px}.image{display:block;width:100%;height:auto;max-height:300px;object-fit:contain;border-radius:12px;margin:16px 0;background:#f6f8f4}.open{margin-top:12px;color:#155344}.expired{display:block;font-size:13px;color:#7a6450;margin-top:16px}.empty{display:grid;gap:12px;justify-items:center;text-align:center;padding:36px 20px}.empty a,.empty button{min-height:44px;padding:12px 18px;background:#155344;color:#fff;border-radius:999px}.pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin:24px 0}.pagination button{min-height:44px;padding:8px 14px;border:1px solid #d9e4dd;border-radius:12px}.pagination button:disabled{opacity:.45}.note{font-size:12px;line-height:1.6;color:#6b7d72;text-align:center}.skeleton{height:150px;background:linear-gradient(120deg,#edf2ec,#f7f9f6);border-radius:18px}.inbox a:focus-visible,.inbox button:focus-visible{outline:2px solid #7ac943;outline-offset:3px}@media(max-width:480px){.inbox{padding:24px 16px 110px}.header{flex-wrap:wrap}.header h1{font-size:24px}.message{padding:16px}.settings{min-height:44px}}
+.inbox {
+  width: min(100%, 54rem);
+  margin-inline: auto;
+  padding: clamp(16px, 4vw, 40px);
+  min-height: 45vh;
+  color: #17372f;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: clamp(16px, 4vw, 28px);
+  border-radius: 20px;
+  background: #edf4e9;
+}
+
+.header h1 { font-size: clamp(1.5rem, 5vw, 2.25rem); font-weight: 750; letter-spacing: -.03em; }
+.header p, .message p, .empty p { color: #486056; font-size: .875rem; line-height: 1.55; }
+
+.settings, .open {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+.settings { padding: 0 12px; border: 1px solid #ccddce; border-radius: 12px; background: white; }
+.list { display: grid; gap: 12px; }
+.message, .empty {
+  min-width: 0;
+  padding: clamp(16px, 4vw, 24px);
+  border: 1px solid #dce6de;
+  border-radius: 18px;
+  background: white;
+  overflow-wrap: anywhere;
+}
+
+.meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: #52695e; font-size: .75rem; }
+.meta span { display: inline-flex; align-items: center; gap: 6px; color: #236044; font-weight: 700; }
+.message h2, .empty h2 { font-size: 1.125rem; font-weight: 700; }
+.message h2 { margin: 10px 0 4px; }
+.image { display: block; width: 100%; height: auto; max-height: 300px; object-fit: contain; border-radius: 12px; margin-top: 14px; background: #f6f8f4; }
+.open { margin-top: 6px; color: #155344; }
+.expired { display: inline-block; margin-top: 12px; color: #6c5744; font-size: .8125rem; }
+
+.empty { display: grid; justify-items: center; gap: 8px; padding-block: clamp(24px, 7vw, 48px); text-align: center; }
+.badge { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 4px; border-radius: 16px; background: #edf4e9; }
+.empty a, .empty button { min-height: 44px; margin-top: 4px; padding: 10px 18px; border-radius: 12px; background: #155344; color: white; font-weight: 650; }
+.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; font-size: .875rem; }
+.pagination button { min-height: 44px; padding: 8px 12px; border: 1px solid #d9e4dd; border-radius: 12px; }
+.pagination button:disabled { opacity: .45; }
+.skeleton { height: 124px; border-radius: 18px; background: #edf2ec; }
+.inbox a:focus-visible, .inbox button:focus-visible { outline: 2px solid #236044; outline-offset: 3px; }
