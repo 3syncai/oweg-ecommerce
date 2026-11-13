@@ -242,7 +242,7 @@ function getStateSuggestions(queryValue: string): string[] {
 function CheckoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { customer, expiredCustomerId, expireSession } = useAuth();
+  const { customer, expiredCustomerId, expireSession, initializing: authInitializing } = useAuth();
   const online = useOnlineStatus();
   const queryClient = useQueryClient();
   const { addresses, addressList, selectedAddress, addressReviewPending, pincode, place } = useDeliveryLocation();
@@ -309,6 +309,7 @@ function CheckoutPageInner() {
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
   const [referralLoading, setReferralLoading] = useState(false);
+  const [referralCheckedCustomerId, setReferralCheckedCustomerId] = useState<string | null>(null);
   const [referralValidating, setReferralValidating] = useState(false);
   const [referralAgentName, setReferralAgentName] = useState("");
 
@@ -321,25 +322,23 @@ function CheckoutPageInner() {
   const [affiliateName, setAffiliateName] = useState("");
   const [affiliateError, setAffiliateError] = useState<string | null>(null);
 
-  // Tracks whether the inbound ?ref=CODE has been routed to the correct
-  // section (Referral vs. Affiliate) so we don't re-run the routing logic
-  // after state updates.
-  const inboundRefRoutedRef = useRef(false);
-
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
+    const customerId = customer?.id;
+    let cancelled = false;
     const fetchReferralCode = async () => {
-      if (!customer?.id) return;
+      if (!customerId) return;
 
       setReferralLoading(true);
       try {
         const res = await fetch('/api/store/referral-code', {
-          headers: { 'x-customer-id': customer.id },
+          headers: { 'x-customer-id': customerId },
           credentials: 'include',
         });
 
         if (res.ok) {
           const data = await res.json();
+          if (cancelled) return;
           if (data.referral_code) {
             setReferralCode(data.referral_code);
             setReferralCodeApplied(data.locked !== false);
@@ -349,11 +348,15 @@ function CheckoutPageInner() {
       } catch (error) {
         console.error('Failed to fetch referral code:', error);
       } finally {
-        setReferralLoading(false);
+        if (!cancelled) {
+          setReferralCheckedCustomerId(customerId);
+          setReferralLoading(false);
+        }
       }
     };
 
     fetchReferralCode();
+    return () => { cancelled = true; };
   }, [customer?.id]);
 
   // Auto-route an inbound ?ref=CODE (from URL or persisted localStorage) to
@@ -364,11 +367,12 @@ function CheckoutPageInner() {
   //   - Customer-shared affiliate codes → Affiliate code section (existing
   //     behavior, validated when the user proceeds or via the Apply button).
   // For logged-in users we wait for the customer's saved-referral lookup to
-  // finish before routing, so an already-locked code is never overridden.
+  // finish before routing. A locked partner code only blocks replacing the
+  // partner referral. Customer affiliate codes use their own field.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (inboundRefRoutedRef.current) return;
-    if (customer?.id && referralLoading) return;
+    if (authInitializing) return;
+    if (customer?.id && referralCheckedCustomerId !== customer.id) return;
 
     const fromUrl = searchParams?.get("ref")?.trim() || "";
     let stored = "";
@@ -377,22 +381,9 @@ function CheckoutPageInner() {
     } catch {
       /* ignore */
     }
-    const code = (fromUrl || stored).trim().toUpperCase();
-
-    inboundRefRoutedRef.current = true;
+    const cookie = document.cookie.match(/(?:^|;\s*)oweg_affiliate_ref=([^;]*)/)?.[1] || "";
+    const code = (fromUrl || stored || cookie).trim().toUpperCase();
     if (!code) return;
-
-    // If the customer already has a locked referral code, keep it and just
-    // clear the inbound storage so the affiliate field doesn't pick it up.
-    if (referralCodeApplied) {
-      try {
-        window.localStorage.removeItem("oweg_affiliate_ref");
-        document.cookie = "oweg_affiliate_ref=; Max-Age=0; path=/; SameSite=Lax";
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
 
     let cancelled = false;
 
@@ -406,6 +397,7 @@ function CheckoutPageInner() {
         if (cancelled) return;
 
         if (referralData?.valid) {
+          if (referralCodeApplied) return;
           // Agent referral code → populate the Referral code section.
           setReferralCode(code);
           setReferralAgentName(referralData.agent_name || "");
@@ -473,7 +465,7 @@ function CheckoutPageInner() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.id, referralLoading]);
+  }, [authInitializing, customer?.id, referralCheckedCustomerId]);
 
   useEffect(() => {
     let cancelled = false;

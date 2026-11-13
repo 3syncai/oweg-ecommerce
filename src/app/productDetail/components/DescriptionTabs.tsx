@@ -15,6 +15,7 @@ type DescriptionTabsProps = {
   onTabChange: (tab: DescriptionTab) => void
   product: DetailedProductType | null
   descriptionHasHtml: boolean
+  focusReview?: boolean
 }
 
 const DescriptionTabs = ({
@@ -22,9 +23,16 @@ const DescriptionTabs = ({
   onTabChange,
   product,
   descriptionHasHtml,
+  focusReview,
 }: DescriptionTabsProps) => {
   const descriptionLines: DescriptionLine[] = product?.description ? formatPlainDescription(product.description) : []
   const queryClient = useQueryClient()
+  const reviewHeading = React.useRef<HTMLHeadingElement>(null)
+  React.useEffect(() => {
+    if (!focusReview || activeTab !== 'reviews' || !product?.id) return
+    reviewHeading.current?.focus({ preventScroll: true })
+    reviewHeading.current?.scrollIntoView({ block: 'start' })
+  }, [activeTab, focusReview, product?.id])
 
   return (
     <div className={styles.tabs}>
@@ -79,11 +87,12 @@ const DescriptionTabs = ({
         <div className="space-y-8">
           {/* Write Review Section */}
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 mb-6">Write a Review</h2>
+            <h2 id="write-review" ref={reviewHeading} tabIndex={-1} className="mb-6 scroll-mt-[calc(var(--app-header-height,136px)+1rem)] text-lg font-semibold text-slate-900">Write a Review</h2>
             <ReviewForm
               productId={product?.id || ''}
               productName={product?.title || 'Product'}
               productImage={product?.thumbnail || product?.images?.[0]}
+              returnToReview={focusReview}
               onSubmitSuccess={() => {
                 // Invalidate and refetch reviews
                 queryClient.invalidateQueries({ queryKey: ['reviews', product?.id] })
