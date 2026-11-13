@@ -60,7 +60,10 @@ export function renderOrderEmail(input: {
   const orderUrl = new URL(`/account/orders/${encodeURIComponent(orderId)}${message.track ? "/track" : ""}`, origin)
   if (displayId != null) orderUrl.searchParams.set("orderNo", String(displayId))
   const supportUrl = new URL("/contact", origin)
+  const logoUrl = new URL("/oweg_logo.png", origin)
   const reason = event === "order_cancelled" ? input.cancellationReason?.trim().slice(0, 500) : null
+  const statusBackground = event === "order_cancelled" ? "#f9eeec" : "#edf4e8"
+  const statusColor = event === "order_cancelled" ? "#84372e" : "#24563b"
   const subject = `${message.label} · OWEG order ${reference}`
   const text = [
     "OWEG Online Shopping", message.heading, message.description, `Order ${reference}`,
@@ -69,29 +72,38 @@ export function renderOrderEmail(input: {
   ].join("\n\n")
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title></head>
-<body style="margin:0;background:#f2f5ee;color:#18352d;font-family:Arial,sans-serif">
-  <span style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">${message.heading} · Order ${escapeHtml(reference)}</span>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f2f5ee">
+<body style="margin:0;padding:0;background:#f5f7f4;color:#17322b;font-family:Arial,Helvetica,sans-serif">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f5f7f4">
     <tr><td align="center" style="padding:24px 12px">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #dce6da;border-radius:14px">
-        <tr><td style="background:#145448;color:#ffffff;padding:21px 24px;border-radius:13px 13px 0 0">
-          <span style="font-size:24px;font-weight:bold;color:#ffffff">OWEG</span>
-          <span style="margin-left:10px;font-size:13px;color:#e4f0dd">Online Shopping</span>
+      <!--[if mso]><table role="presentation" width="560" cellspacing="0" cellpadding="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="max-width:560px;border:1px solid #dce5dc;border-top:4px solid #145448;text-align:left">
+        <tr><td style="padding:20px 24px;border-bottom:1px solid #e6ebe5">
+          <a href="${escapeHtml(origin + "/")}" style="display:inline-block;color:#145448;text-decoration:none">
+            <img src="${escapeHtml(logoUrl.href)}" width="121" height="32" alt="OWEG Online Shopping" style="display:block;border:0;color:#145448;font-size:13px;font-weight:bold">
+          </a>
         </td></tr>
-        <tr><td style="padding:27px 24px 24px">
-          <p style="margin:0 0 8px;color:#28604a;font-size:13px;font-weight:bold">${message.label}</p>
-          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.25;color:#18352d">${message.heading}</h1>
-          <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#43554e">${message.description}</p>
-          <p style="margin:0 0 20px;padding:12px;background:#edf5e8;font-size:14px;overflow-wrap:anywhere">Order <strong>${escapeHtml(reference)}</strong></p>
-          ${reason ? `<p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#43554e"><strong>Reason from OWEG</strong><br>${escapeHtml(reason)}</p>` : ""}
-          <table role="presentation" cellspacing="0" cellpadding="0"><tr><td bgcolor="#145448" style="border-radius:8px">
-            <a href="${escapeHtml(orderUrl.href)}" style="display:inline-block;padding:13px 18px;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none">${message.action}</a>
-          </td></tr></table>
+        <tr><td style="padding:26px 24px 24px">
+          <h1 style="margin:0 0 10px;font-size:26px;line-height:1.25;color:#17322b">${message.heading}</h1>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#43554e">${message.description}</p>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f7f9f6" style="border:1px solid #e4ebe1;border-radius:8px">
+            <tr><td style="padding:14px 16px">
+              <p style="margin:0 0 5px;color:#526259;font-size:12px;line-height:1.4">Order number</p>
+              <p style="margin:0 0 10px;font-size:18px;line-height:1.35;font-weight:bold;overflow-wrap:anywhere">${escapeHtml(reference)}</p>
+              <span style="display:inline-block;padding:4px 8px;border-radius:4px;background:${statusBackground};color:${statusColor};font-size:12px;line-height:1.4;font-weight:bold">${message.label}</span>
+            </td></tr>
+          </table>
+          ${reason ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#43554e;overflow-wrap:anywhere"><strong>Cancellation reason</strong><br>${escapeHtml(reason)}</p>` : ""}
+          <table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:20px">
+            <tr><td bgcolor="#145448" style="border-radius:6px;mso-padding-alt:14px 18px">
+              <a href="${escapeHtml(orderUrl.href)}" style="display:inline-block;padding:14px 18px;mso-padding-alt:0;color:#ffffff;font-size:14px;line-height:1.3;font-weight:bold;text-decoration:none">${message.action}</a>
+            </td></tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:16px 24px 22px;border-top:1px solid #e4ebe1;color:#43554e;font-size:13px;line-height:1.5">
-          Need help with this order? <a href="${escapeHtml(supportUrl.href)}" style="color:#145448;text-decoration:underline">Contact OWEG support</a>.
+        <tr><td bgcolor="#fafbf9" style="padding:16px 24px;border-top:1px solid #e6ebe5;color:#43554e;font-size:13px;line-height:1.5">
+          Questions about your order? <a href="${escapeHtml(supportUrl.href)}" style="color:#145448;font-weight:bold;text-decoration:underline">Contact OWEG support</a>.
         </td></tr>
       </table>
+      <!--[if mso]></td></tr></table><![endif]-->
     </td></tr>
   </table>
 </body></html>`

@@ -6,15 +6,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowUpRight, Heart, HeartOff, ImageOff, Loader2, ShoppingCart } from "lucide-react";
+import { AlertCircle, ArrowRight, Heart, HeartOff, ImageOff, Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { notifyCartAddSuccess, notifyWishlistRemoved, notifyWishlistSuccess, notifyActionError, SHOPPING_FEEDBACK_ID } from "@/lib/notifications";
-import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useToggleWishlist } from "@/hooks/useWishlistMutations";
 import { useAddToCart } from "@/hooks/useCartMutations";
 import { cn } from "@/lib/utils";
+import ShoppingEmptyState from "@/components/shopping/ShoppingEmptyState";
+import surface from "@/components/shopping/ShoppingSurface.module.css";
 import styles from "./WishlistContent.module.css";
 
 type WishlistProduct = {
@@ -189,30 +190,19 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
 
   const emptyState = !showSkeleton && !products.length && !errorMessage;
   return (
-    <div className={cn(styles.page, embedded && styles.embedded)} data-wishlist-page>
-      <div className={cn(styles.content, !embedded && "oweg-container")}>
-        <header className={styles.header}>
-          <div>
-            <div className={styles.heading}>
-              <span className={styles.headingIcon}>
-                <AccountHubIcon name="wishlist" size={22} className="h-[22px] w-[22px]" />
-              </span>
-              <div>
-                <p className={styles.eyebrow}>Saved for later</p>
-                <h1>Wishlist</h1>
-              </div>
-            </div>
-            <p className={styles.lead}>Keep your favourites together. Add them to your cart when you&apos;re ready.</p>
-          </div>
+    <div className={cn(styles.page, !embedded && surface.surface)} data-wishlist-page>
+      <div className={embedded ? undefined : surface.container}>
+        <header className={surface.heading}>
+          <h1>Wishlist</h1>
           <div className={styles.headerActions}>
-            {!showSkeleton && !errorMessage ? (
-              <span className={styles.savedCount}><Heart className="h-3.5 w-3.5" />{products.length} saved {products.length === 1 ? "item" : "items"}</span>
+            {!showSkeleton && !errorMessage && products.length > 0 ? (
+              <span className={styles.savedCount}>{products.length} saved {products.length === 1 ? "item" : "items"}</span>
             ) : null}
             {refreshing ? (
               <span className={styles.refreshing} role="status"><Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" />Updating…</span>
             ) : null}
             {!emptyState && !showSkeleton && products.length > 0 ? (
-              <Link href="/" className={styles.shoppingLink}>Continue shopping <ArrowUpRight className="h-4 w-4" /></Link>
+              <Link href="/" className={styles.shoppingLink}>Continue shopping <ArrowRight size={16} aria-hidden="true" /></Link>
             ) : null}
           </div>
         </header>
@@ -220,26 +210,17 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
         {showSkeleton ? (
           <WishlistSkeleton />
         ) : errorMessage ? (
-          <div className={styles.error} role="alert">
-            <AlertCircle className="h-5 w-5 shrink-0" /><span>{errorMessage}</span>
+          <div className={styles.error}>
+            <p role="alert"><AlertCircle size={18} aria-hidden="true" />{errorMessage}</p>
+            <button type="button" className={styles.shoppingLink} disabled={wishlistQuery.isFetching} onClick={() => void wishlistQuery.refetch()}>
+              {wishlistQuery.isFetching ? "Retrying…" : "Try again"}
+            </button>
           </div>
         ) : emptyState ? (
-          <div className={styles.empty}>
-            <span className={styles.emptyIcon}><Heart className="h-8 w-8" strokeWidth={1.5} /></span>
-            <h2>Your wishlist is empty</h2>
-            <p>
-              Tap the heart icon on any product to save it here.
-            </p>
-            <Link
-              href="/"
-              className={styles.primaryButton}
-            >
-              Continue shopping
-            </Link>
-          </div>
+          <ShoppingEmptyState icon={Heart} title="Your wishlist is empty" description="Select the heart on a product to save it for later." />
         ) : (
           <div className={styles.grid}>
-            {products.map((product) => {
+            {products.map((product, index) => {
               const image =
                 product.thumbnail ||
                 (Array.isArray(product.images) && product.images.length
@@ -256,7 +237,6 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                       product.mrp > product.price
                     ? Math.round(((product.mrp - product.price) / product.mrp) * 100)
                     : 0;
-              const limited = discount >= 20;
 
               return (
                 <article
@@ -265,30 +245,25 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                 >
                   <Link
                     href={href}
+                    prefetch={false}
                     className={styles.media}
                     aria-label={`View ${product.title || "product"}`}
                   >
                     <WishlistImage
                       src={image}
                       title={product.title || "Product"}
-                      priority={products.length < 4}
+                      priority={index === 0}
                     />
                   </Link>
                   <div className={styles.details}>
-                    <div className={styles.badges}>
-                      {discount > 0 ? (
+                    {discount > 0 && (
                         <span className={styles.discount}>
                           {discount}% off
                         </span>
-                      ) : null}
-                      {limited ? (
-                        <span className={styles.limited}>
-                          Limited
-                        </span>
-                      ) : null}
-                    </div>
+                    )}
                     <Link
                       href={href}
+                      prefetch={false}
                       className={styles.title}
                     >
                       {product.title || "Product"}
@@ -308,11 +283,11 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
                   </div>
                   <div className={styles.actions}>
                     {(product.variant_count ?? 1) > 1 ? (
-                      <Link href={href} className={styles.primaryButton}>Choose options</Link>
+                      <Link href={href} prefetch={false} className={surface.primary}>Choose options</Link>
                     ) : (
                     <button
                       type="button"
-                      className={styles.primaryButton}
+                      className={surface.primary}
                       disabled={addCart.isPending}
                       onClick={() => void handleAddToCart(product)}
                     >

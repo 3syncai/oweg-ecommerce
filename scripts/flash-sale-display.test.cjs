@@ -6,13 +6,21 @@ const path = require('node:path')
 const ts = require('typescript')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
-function load(file, mocks = {}) {
+function load(file, mocks = {}, clock = Date) {
   const module = { exports: {} }
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: {
     target: ts.ScriptTarget.ES2021, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText
-  vm.runInNewContext(js, { module, exports: module.exports, Date, URL, URLSearchParams, console: {log(){},warn(){},error(){}}, process: {env:{MEDUSA_BACKEND_URL:'https://backend.example'}},
-    require: name => name in mocks ? mocks[name] : require(name) }, { filename: file })
+  vm.runInNewContext(js, { module, exports: module.exports, Date: clock, URL, URLSearchParams, console: {log(){},warn(){},error(){}}, process: {env:{MEDUSA_BACKEND_URL:'https://backend.example'}},
+    require: name => name in mocks ? mocks[name] : name === 'next/cache' ? {
+      unstable_cache: callback => {
+        const entries = new Map()
+        return async key => {
+          if (!entries.has(key)) entries.set(key, await callback(key))
+          return entries.get(key)
+        }
+      },
+    } : require(name) }, { filename: file })
   return module.exports
 }
 const display = load('src/lib/flash-sale-display.ts')
@@ -177,15 +185,29 @@ test('full store response includes the saved heading and all published deals acr
   assert.equal(result.products.at(-1).id,'p-73')
 })
 
-test('overlapping home stock validations coalesce, then revalidate fresh inventory on the next request', async () => {
+test('overlapping featured deals requests share stock validation within the same cache window', async () => {
   let reads=0, checks=0
+  let now = 30_000
+  class Clock extends Date { static now() { return now } }
   const server=load('src/lib/flash-sale-server.ts',{
     axios:{get:async()=>{reads++;return{data:{active:true,products:[]}}}},
     '@/lib/flash-sale-cache':load('src/lib/flash-sale-cache.ts'),
     '@/lib/home-flash-sale':{inStockHomeFlashSale:async data=>{checks++;await new Promise(resolve=>setTimeout(resolve,5));return data}},
-  })
+  }, Clock)
   await Promise.all(Array.from({length:20},()=>server.loadFlashSale({homeOnly:true})))
   assert.equal(reads,1);assert.equal(checks,1)
   await server.loadFlashSale({homeOnly:true})
-  assert.equal(reads,1);assert.equal(checks,2)
+  assert.equal(reads,1);assert.equal(checks,1)
+  now += 15_000
+  await server.loadFlashSale({homeOnly:true})
+  assert.equal(reads,2);assert.equal(checks,2)
+})
+
+test('CDN freshness cannot outlast the featured window or sale expiry', () => {
+  const { flashSaleCacheSeconds, currentFlashSale } = load('src/lib/flash-sale-cache.ts')
+  const payload = { active: true, products: [{ id: 'p' }], cache_until: 45_000,
+    flash_sale: { expires_at: new Date(43_000).toISOString() } }
+  assert.equal(flashSaleCacheSeconds(payload, 41_000), 2)
+  assert.equal(flashSaleCacheSeconds({ ...payload, flash_sale: null }, 44_000), 1)
+  assert.equal(currentFlashSale(payload, 43_000).products.length, 0)
 })

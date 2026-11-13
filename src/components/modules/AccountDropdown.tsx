@@ -11,15 +11,19 @@ import {
 } from "@/components/ui/icons/account";
 
 type AccountDropdownProps = {
+  customerName: string;
   onSignOutClick?: () => void;
 };
 
-export default function AccountDropdown({ onSignOutClick }: AccountDropdownProps) {
+export default function AccountDropdown({ customerName, onSignOutClick }: AccountDropdownProps) {
   return (
     <div className={styles.menu}>
       <div className={styles.header}>
         <span className={styles.avatar}><UserRound size={21} aria-hidden="true" /></span>
-        <div><p className={styles.eyebrow}>Your space at OWEG</p><p className={styles.title}>Make yourself at home.</p><p className={styles.description}>Your orders, favourites and account.</p></div>
+        <div className={styles.identity}>
+          <p className={styles.eyebrow}>Signed in as</p>
+          <p className={styles.title}>{customerName}</p>
+        </div>
       </div>
       <div className={styles.shortcuts}>
         <Link href="/account" className={styles.row}>

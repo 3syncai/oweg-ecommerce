@@ -15,6 +15,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  MapPin,
   Package,
   Percent,
   Phone,
@@ -50,7 +51,7 @@ const iconTone = "h-4 w-4 text-[var(--oweg-green-dark)]";
 
 function IconTile({ children }: { children: ReactNode }) {
   return (
-    <span className="oweg-icon-tile flex h-10 w-10 shrink-0 items-center justify-center">
+    <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--oweg-surface-tint)]">
       {children}
     </span>
   );
@@ -100,13 +101,13 @@ function ProfileLinkRow({
     <Link
       href={href}
       onClick={onNavigate}
-      className="flex min-h-[48px] items-center gap-3 px-3.5 py-2.5 transition-colors active:bg-[var(--oweg-surface-tint)]"
+      className="flex min-h-12 items-center gap-3 px-3 py-2 transition-colors active:bg-[var(--oweg-surface-tint)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#145448]"
     >
       <IconTile>{icon}</IconTile>
       <span className="min-w-0 flex-1 text-sm font-medium text-[var(--oweg-ink)]">
         {label}
       </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--oweg-ink-muted)]" />
+      <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--oweg-ink-muted)]" />
     </Link>
   );
 }
@@ -124,10 +125,10 @@ function LinkSection({
 }) {
   return (
     <section className="space-y-2">
-      <p className="px-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--oweg-ink-muted)]">
+      <h2 className="px-1 text-sm font-bold text-[var(--oweg-ink)]">
         {title}
-      </p>
-      <div className="oweg-surface-card overflow-hidden divide-y divide-[var(--oweg-border)]">
+      </h2>
+      <div className="overflow-hidden divide-y divide-[var(--oweg-border)] rounded-xl border border-[var(--oweg-border)] bg-white">
         {links.map((link) => (
           <ProfileLinkRow
             key={link.href}
@@ -156,14 +157,14 @@ function QuickActionTile({
   as?: "link" | "a";
 }) {
   const className =
-    "oweg-surface-card flex min-h-[88px] flex-col items-center justify-center gap-2 p-3 text-center transition active:scale-[0.98] active:bg-[var(--oweg-surface-tint)]";
+    "flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-[var(--oweg-border)] bg-white px-1 py-2 text-center transition-colors active:bg-[var(--oweg-surface-tint)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145448]";
 
   const body = (
     <>
-      <span className="oweg-icon-tile flex h-12 w-12 items-center justify-center">
+      <span aria-hidden="true" className="flex size-7 items-center justify-center">
         {icon}
       </span>
-      <span className="text-xs font-semibold text-[var(--oweg-ink)]">{label}</span>
+      <span className="break-words text-xs font-semibold leading-tight text-[var(--oweg-ink)]">{label}</span>
     </>
   );
 
@@ -204,39 +205,47 @@ export default function MobileProfileSheet({
   const quickTileIcon = "h-5 w-5 text-[var(--oweg-green-dark)]";
 
   return (
-    <div className="-mx-4 min-h-full space-y-5 bg-[var(--oweg-surface-subtle)] px-5 pb-4">
-      <div className="flex items-center justify-end">
+    <div className="mx-auto max-w-xl space-y-4 pb-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-bold tracking-tight text-[var(--oweg-ink)]">Account</h1>
         <button
           type="button"
           aria-label="Close profile"
           onClick={onClose}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--oweg-border)] bg-white text-[var(--oweg-ink)] shadow-sm transition active:scale-[0.97]"
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-[var(--oweg-border)] bg-white text-[var(--oweg-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145448]"
         >
-          <X className="h-4 w-4" />
+          <X aria-hidden="true" className="size-4" />
         </button>
       </div>
 
-      {/* Header card */}
-      <header className="rounded-[var(--oweg-radius-lg)] border border-[rgba(122,201,67,0.22)] bg-[var(--oweg-surface-tint)]/90 px-4 py-4 backdrop-blur-sm">
-        <h1 className="text-xl font-bold tracking-tight text-[var(--oweg-ink)] sm:text-2xl">
-          {customer ? `Hi, ${customerName}` : "Welcome back"}
-        </h1>
-        <p className="mt-1 text-sm text-[var(--oweg-ink-muted)]">
-          Deliver to {deliverLocation}
-        </p>
+      <header className="rounded-xl border border-[var(--oweg-border)] bg-white p-4">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[var(--oweg-surface-tint)] text-[#145448]">
+            <User className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="break-words text-base font-bold text-[var(--oweg-ink)]">
+              {customer ? customerName : "Welcome to OWEG"}
+            </h2>
+            <p className="mt-1 flex items-start gap-1.5 text-xs leading-relaxed text-[var(--oweg-ink-muted)]">
+              <MapPin aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+              <span className="min-w-0 break-words">Deliver to {deliverLocation}</span>
+            </p>
+          </div>
+        </div>
 
         {!customer ? (
-          <div className="mt-4 flex gap-3">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
-              className="oweg-tap flex min-h-[44px] flex-1 items-center justify-center rounded-[var(--oweg-radius-sm)] bg-[var(--oweg-green)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--oweg-green-dark)]"
+              className="oweg-tap min-h-11 rounded-lg bg-[#145448] px-2 text-sm font-semibold text-white hover:bg-[#103e36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145448]"
               onClick={onLogin}
             >
               Login
             </button>
             <button
               type="button"
-              className="oweg-tap flex min-h-[44px] flex-1 items-center justify-center rounded-[var(--oweg-radius-sm)] border border-[var(--oweg-border-strong)] bg-white px-4 text-sm font-semibold text-[var(--oweg-green-dark)] transition hover:bg-[var(--oweg-surface-tint)]"
+              className="oweg-tap min-h-11 rounded-lg border border-[var(--oweg-border-strong)] bg-white px-2 text-sm font-semibold text-[#145448] hover:bg-[var(--oweg-surface-tint)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145448]"
               onClick={onSignup}
             >
               Sign up
@@ -245,12 +254,8 @@ export default function MobileProfileSheet({
         ) : null}
       </header>
 
-      {/* Quick actions 2x2 */}
-      <section className="space-y-2">
-        <p className="px-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--oweg-ink-muted)]">
-          Quick actions
-        </p>
-        <div className="grid grid-cols-2 gap-3">
+      <nav aria-label="Account shortcuts">
+        <div className={customer ? "grid grid-cols-4 gap-2" : "grid grid-cols-3 gap-2"}>
           {customer ? (
             <QuickActionTile
               href="/account"
@@ -279,10 +284,10 @@ export default function MobileProfileSheet({
             as="a"
           />
         </div>
-      </section>
+      </nav>
 
       <LinkSection
-        title="My Account"
+        title="Explore OWEG"
         links={accountLinks}
         iconFor={accountIcon}
         onNavigate={onClose}

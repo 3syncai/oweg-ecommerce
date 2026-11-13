@@ -4,7 +4,8 @@ import BrandLoader from "@/components/ui/BrandLoader";
 import React, { Suspense } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, ChevronRight, } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import { ProductCard } from '@/components/modules/ProductCard';
 
 type UIProduct = {
@@ -68,31 +69,44 @@ function SpecialsPageContent() {
     else next.set('page', String(safe));
     const qs = next.toString();
     router.replace(qs ? `/specials?${qs}` : '/specials', { scroll: false });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   };
 
   return (
     <div className="oweg-page min-h-screen pb-10">
-      <div className="oweg-container space-y-6 py-8 md:py-10">
-        <header className="space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[var(--oweg-surface-tint)] px-4 py-1 text-xs font-semibold text-[var(--oweg-green-dark)]">
-            Specials
+      <div className="oweg-container space-y-5 py-5 sm:space-y-7 sm:py-10">
+        <header className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-[#173f34] p-5 text-white sm:p-8">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">OWEG Specials</h1>
+            <p className="mt-2 text-sm text-[#dcebdc] sm:text-base">Explore our current selection of special picks.</p>
           </div>
-          <h1 className="oweg-title text-[clamp(1.6rem,1.1rem+2.4vw,2.5rem)]">Specials tagged products</h1>
-          <p className="oweg-subtle">
-            Explore every product marked with the Specials tag across the store.
-            {!loading && count > 0 ? ` · ${count} products` : ''}
-          </p>
+          <Sparkles size={30} className="text-[#c9e795]" aria-hidden="true" />
         </header>
 
         {loading ? (
           <BrandLoader label="Finding today’s specials…" />
         ) : hasError ? (
-          <div className="text-sm text-red-500">Unable to load Specials right now. Please try again.</div>
+          <div className="rounded-2xl border border-[#dbe5d8] bg-white p-6 text-center">
+            <p role="alert">We couldn’t load Specials right now.</p>
+            <button type="button" disabled={specialsQuery.isFetching} onClick={() => void specialsQuery.refetch()}
+              className="mt-3 min-h-11 rounded-xl bg-[#155344] px-5 font-semibold text-white disabled:opacity-60">
+              {specialsQuery.isFetching ? 'Retrying…' : 'Try again'}
+            </button>
+          </div>
         ) : products.length === 0 ? (
-          <div className="text-sm text-gray-600">No Specials products available right now.</div>
+          <section className="rounded-2xl border border-[#dbe5d8] bg-white px-5 py-9 text-center sm:py-12">
+            <h2 className="text-xl font-semibold text-[#17372f]">{requestedPage > 1 && count > 0 ? 'No picks on this page' : 'No Specials available right now'}</h2>
+            {requestedPage > 1 && count > 0 ? (
+              <button type="button" onClick={() => goToPage(1)} className="mt-4 min-h-11 rounded-xl bg-[#155344] px-4 font-semibold text-white">Back to first page</button>
+            ) : (
+              <Link href="/flash-sale" prefetch={false} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#155344] px-4 text-sm font-semibold text-white">
+                Browse Flash Sale <ArrowRight size={16} aria-hidden="true" />
+              </Link>
+            )}
+          </section>
         ) : (
           <>
+            <p className="text-sm text-[#486357]" role="status">{specialsQuery.isPlaceholderData ? 'Loading next results…' : `${count} ${count === 1 ? 'product' : 'products'}`}</p>
             <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {[...products]
                 .sort((a, b) => {
@@ -124,8 +138,8 @@ function SpecialsPageContent() {
                 <button
                   type="button"
                   onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage <= 1}
-                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
+                  disabled={currentPage <= 1 || specialsQuery.isPlaceholderData}
+                  className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   Prev
@@ -136,8 +150,8 @@ function SpecialsPageContent() {
                 <button
                   type="button"
                   onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage >= totalPages}
-                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
+                  disabled={currentPage >= totalPages || specialsQuery.isPlaceholderData}
+                  className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 disabled:opacity-40"
                 >
                   Next
                   <ChevronRight className="w-4 h-4" />
