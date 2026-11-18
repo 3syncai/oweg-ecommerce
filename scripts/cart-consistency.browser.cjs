@@ -157,6 +157,7 @@ async function main() {
       await p.locator('[data-cart-flight]').waitFor();await badge(p,0);
       await p.waitForFunction(()=>window.calls.some(c=>c.method==='POST'));
       assert.equal(await p.locator('[data-cart-flight]').evaluate(n=>n.style.width),'100px');
+      await p.evaluate(()=>{const target=document.querySelector('[data-cart-target]');const animate=target.animate.bind(target);window.cartImpacts=0;target.animate=(...args)=>{window.cartImpacts++;return animate(...args)}});
       assert.equal(await p.locator('article img').evaluate(n=>n.style.visibility),'hidden');
       await p.waitForFunction(()=>document.querySelector('[data-cart-flight]')?.dataset.phase==='diamond');
       await p.waitForFunction(()=>document.querySelector('[data-cart-flight]')?.dataset.phase==='shoot');
@@ -164,7 +165,9 @@ async function main() {
       assert.equal(await p.locator('[data-cart-flight] img').evaluate(n=>getComputedStyle(n).opacity),'1');
       await p.waitForFunction(()=>!document.querySelector('[data-cart-flight]'));
       assert.equal(await p.locator('article img').evaluate(n=>n.style.visibility),'');await badge(p,0);
+      assert.equal(await p.evaluate(()=>window.cartImpacts),0);
       await p.evaluate(()=>window.holdWrite=false);await badge(p,1);
+      await p.waitForFunction(()=>window.cartImpacts===1);
       assert.equal(await p.locator('[data-cart-flight]').count(),0);
     });
     await test('failed API cancels provisional motion and restores the source',{holdWrite:true,failWrite:true},async p=>{

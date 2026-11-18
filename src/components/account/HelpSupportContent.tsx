@@ -1,7 +1,7 @@
 "use client";
 
 import BrandLoader from "@/components/ui/BrandLoader";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Mail } from "lucide-react";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
@@ -70,43 +70,42 @@ function formatTicketDate(value?: string): string {
 
 export default function HelpSupportContent({ embedded = false }: HelpSupportContentProps) {
   const { customer } = useAuth();
-  const [tickets, setTickets] = useState<ReturnRequestTicket[]>([]);
-  const [ticketsLoading, setTicketsLoading] = useState(false);
-
-  const loadTickets = useCallback(async () => {
-    if (!customer?.id) return;
-    setTicketsLoading(true);
-    try {
-      const res = await fetch("/api/medusa/return-requests", {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        setTickets([]);
-        return;
-      }
-      const data = await res.json();
-      const list = (data.return_requests || []) as ReturnRequestTicket[];
-      setTickets(
-        list
-          .slice()
-          .sort((a, b) => {
-            const aTime = new Date(a.created_at || 0).getTime();
-            const bTime = new Date(b.created_at || 0).getTime();
-            return bTime - aTime;
-          })
-          .slice(0, 5)
-      );
-    } catch {
-      setTickets([]);
-    } finally {
-      setTicketsLoading(false);
-    }
-  }, [customer?.id]);
+  const customerId = customer?.id;
+  const [attempt, setAttempt] = useState(0);
+  const [result, setResult] = useState<{
+    customerId: string;
+    attempt: number;
+    tickets: ReturnRequestTicket[] | null;
+  } | null>(null);
+  const currentResult = result?.customerId === customerId && result?.attempt === attempt ? result : null;
+  const tickets = currentResult?.tickets ?? [];
 
   useEffect(() => {
-    void loadTickets();
-  }, [loadTickets]);
+    if (!customerId) return;
+    const controller = new AbortController();
+
+    async function loadTickets(id: string) {
+      try {
+        const res = await fetch("/api/medusa/return-requests", {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("Could not load return requests");
+        const data = await res.json();
+        if (!Array.isArray(data?.return_requests)) throw new Error("Invalid return requests response");
+        const list = (data.return_requests as ReturnRequestTicket[]).slice()
+          .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+          .slice(0, 5);
+        if (!controller.signal.aborted) setResult({ customerId: id, attempt, tickets: list });
+      } catch {
+        if (!controller.signal.aborted) setResult({ customerId: id, attempt, tickets: null });
+      }
+    }
+
+    void loadTickets(customerId);
+    return () => controller.abort();
+  }, [customerId, attempt]);
 
   if (!customer) {
     return (
@@ -212,8 +211,19 @@ export default function HelpSupportContent({ embedded = false }: HelpSupportCont
           <h3 className="text-base font-semibold text-[#1F2A33]">Recent tickets</h3>
         </div>
 
-        {ticketsLoading ? (
+        {!currentResult ? (
           <BrandLoader compact label="Finding your support tickets…" />
+        ) : currentResult.tickets === null ? (
+          <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-950">
+            <p>We couldn’t load your return and replacement requests.</p>
+            <button
+              type="button"
+              onClick={() => setAttempt((previous) => previous + 1)}
+              className="mt-2 min-h-11 rounded-lg border border-amber-300 px-4 font-semibold hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              Try again
+            </button>
+          </div>
         ) : tickets.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-200 bg-[#FAFAFA] px-4 py-8 text-center">
             <AccountHubIcon name="chat-support" size={32} className="mx-auto h-8 w-8 opacity-60" />

@@ -5,7 +5,7 @@ import { gsap } from "gsap";
 import { CART_FLIGHT_START, CART_FLIGHT_SETTLED, type CartFlight } from "@/lib/cart-flight";
 
 type FlightState = { id: number; source: CartFlight; failed: boolean; done: () => void };
-const cartImpacts = new WeakMap<HTMLElement, gsap.core.Timeline>();
+const cartImpacts = new WeakMap<HTMLElement, Animation>();
 const hiddenImages = new WeakMap<HTMLImageElement, { count: number; visibility: string }>();
 function detach(image?: HTMLImageElement) {
   if (!image) return () => {};
@@ -23,6 +23,18 @@ function visibleCart() {
     const rect = node.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth && getComputedStyle(node).visibility !== "hidden";
   });
+}
+function confirmCartImpact() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const target = visibleCart();
+  if (!target) return;
+  cartImpacts.get(target)?.cancel();
+  const impact = target.animate([
+    { scale: "1" },
+    { scale: "1.12", offset: .42 },
+    { scale: "1" },
+  ], { duration: 180, easing: "ease-out" });
+  cartImpacts.set(target, impact);
 }
 function Flight({ source, failed, done }: FlightState) {
   const wrapper = useRef<HTMLDivElement>(null);
@@ -67,8 +79,6 @@ function Flight({ source, failed, done }: FlightState) {
     const finish = () => { if (!disposed) { restoreOnce(); done(); } };
     let restored = false;
     const restoreOnce = () => { if (!restored) { restored = true; restore(); } };
-    let impact: gsap.core.Timeline | undefined;
-    let impactTarget: HTMLElement | undefined;
     const timeline = gsap.timeline({ onComplete: finish });
     const phase = (name: string) => { node.dataset.phase = name; };
     timeline.call(() => phase("detach"), [], 0)
@@ -78,22 +88,9 @@ function Flight({ source, failed, done }: FlightState) {
       .call(() => phase("compress"), [], .33)
       .to(picture, { scaleX: .22, scaleY: .09, skewX: 0, rotation: 0, duration: .13, ease: "power2.in" }, .33)
       .call(() => phase("shoot"), [], .46)
-      .to(progress, { value: 1, duration: .55, ease: "power1.inOut", onUpdate: travel }, .46)
-      .to(picture, { scaleX: .02, scaleY: .02, duration: .55, ease: "power2.in" }, .46)
-      .to(picture, { opacity: 0, duration: .14, ease: "power2.in" }, .87)
-      .call(() => {
-        phase("impact");
-        restoreOnce();
-        readTarget();
-        if (!target?.isConnected) return;
-        // Decorative catch/squash, not a claim that the API succeeded.
-        impactTarget = target;
-        cartImpacts.get(target)?.revert();
-        impact = gsap.timeline().to(target, { scaleX: 1.16, scaleY: .8, y: 2, duration: .045, ease: "power2.out" })
-          .to(target, { scaleX: 1, scaleY: 1, y: 0, duration: .075, ease: "back.out(2)" });
-        cartImpacts.set(target, impact);
-      }, [], 1.01)
-      .to({}, { duration: .12 }, 1.01);
+      .to(progress, { value: 1, duration: .44, ease: "power1.inOut", onUpdate: travel }, .46)
+      .to(picture, { scaleX: .02, scaleY: .02, duration: .44, ease: "power2.in" }, .46)
+      .to(picture, { opacity: 0, duration: .14, ease: "power2.in" }, .76);
     window.addEventListener("scroll", updateTarget, { passive: true, capture: true });
     window.addEventListener("resize", updateTarget, { passive: true });
     window.visualViewport?.addEventListener("resize", updateTarget);
@@ -105,10 +102,6 @@ function Flight({ source, failed, done }: FlightState) {
       disposed = true;
       timeline.kill();
       motionPreference.removeEventListener("change", preferenceChanged);
-      if (impactTarget && cartImpacts.get(impactTarget) === impact) {
-        impact?.revert();
-        cartImpacts.delete(impactTarget);
-      }
       context.revert();
       restoreOnce();
       window.removeEventListener("scroll", updateTarget, true);
@@ -128,15 +121,31 @@ function Flight({ source, failed, done }: FlightState) {
 export default function CartSuccessMotion() {
   const [flights, setFlights] = useState<FlightState[]>([]);
   useEffect(() => {
+    const active = new Map<number, boolean>();
     const start = (event: Event) => {
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       const { id, source } = (event as CustomEvent<{ id: number; source: CartFlight }>).detail;
-      const done = () => setFlights(current => current.filter(flight => flight.id !== id));
+      if (active.size >= 4) {
+        const oldest = active.keys().next().value;
+        if (oldest !== undefined) active.delete(oldest);
+      }
+      active.set(id, false);
+      const done = () => {
+        if (active.get(id)) confirmCartImpact();
+        active.delete(id);
+        setFlights(current => current.filter(flight => flight.id !== id));
+      };
       setFlights(current => [...current.slice(-3), { id, source, failed: false, done }]);
     };
     const settled = (event: Event) => {
       const { id, success } = (event as CustomEvent<{ id: number; success: boolean }>).detail;
-      if (!success) setFlights(current => current.map(flight => flight.id === id ? { ...flight, failed: true } : flight));
+      if (success) {
+        if (active.has(id)) active.set(id, true);
+        else confirmCartImpact();
+      } else {
+        active.delete(id);
+        setFlights(current => current.map(flight => flight.id === id ? { ...flight, failed: true } : flight));
+      }
     };
     window.addEventListener(CART_FLIGHT_START, start);
     window.addEventListener(CART_FLIGHT_SETTLED, settled);

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { Facebook, Instagram, Youtube, ChevronDown } from "lucide-react";
-import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks, storefrontSupport } from "@/lib/storefront-links";
+import { storefrontPolicyLinks as policyLinks, storefrontQuickLinks as quickLinks, storefrontRewardLink, storefrontAffiliateLink } from "@/lib/storefront-links";
 import styles from "./Footer.module.css";
 
 const accountLinks = [
   { label: "Brands", href: "/brands" },
-  { label: "Affiliates", href: "/affiliates" },
-  { label: "My Rewards", href: "/my-reward" },
+  storefrontAffiliateLink,
+  storefrontRewardLink,
 ];
 
 const Footer = ({ year }: { year: number }) => {
@@ -21,10 +21,7 @@ const Footer = ({ year }: { year: number }) => {
           <ul className={styles.links}>
             <li><Link href="/contact">Contact us</Link></li>
             <li><Link href="/faq">Frequently asked questions</Link></li>
-            <li><a href={storefrontSupport.phoneHref}>{storefrontSupport.phone}</a></li>
-            <li><a href={`mailto:${storefrontSupport.email}`}>{storefrontSupport.email}</a></li>
           </ul>
-          <div className={styles.support}><p><strong>Ascent Retechno India Pvt Ltd</strong></p><p>Av Pride, B-12, Ground Floor, Opp. Rahul, International School, Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.</p></div>
         </details>
         <details className={styles.group}>
           <summary>Policies <ChevronDown aria-hidden="true" /></summary>
@@ -40,7 +37,7 @@ const Footer = ({ year }: { year: number }) => {
       <div className={`footer-root ${styles.desktop}`}>
 
       <div className="oweg-container py-10 md:py-16">
-        <div className="grid grid-cols-2 gap-x-6 gap-y-9 md:gap-10 lg:grid-cols-5 lg:gap-12">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-9 md:gap-10 lg:grid-cols-4 lg:gap-12">
           {/* My Account Section */}
           <div>
             <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Explore OWEG</h3>
@@ -84,23 +81,6 @@ const Footer = ({ year }: { year: number }) => {
                 </li>
               ))}
             </ul>
-          </div>
-
-          {/* Support Section */}
-          <div className="col-span-2 lg:col-span-1">
-            <h3 className="section-title mb-4 text-base font-normal md:mb-6 md:text-xl">Support</h3>
-            <div className="text-sm">
-              <p>Ascent Retechno India Pvt Ltd</p>
-              <p>
-                Av Pride, B-12, Ground Floor, Opp. Rahul,
-                International School, Nilemore 4th Road,
-                Nalasopara West, Thane, Maharashtra - 401203.
-              </p>
-              <div className="mt-4 flex min-w-0 flex-col items-start gap-2">
-                <a href={storefrontSupport.phoneHref} className="link-item">{storefrontSupport.phone}</a>
-                <a href={`mailto:${storefrontSupport.email}`} className="link-item max-w-full break-all">{storefrontSupport.email}</a>
-              </div>
-            </div>
           </div>
 
           {/* Connect With Us Section */}

@@ -15,10 +15,10 @@ type ProfileFieldProps = {
 function ProfileField({ label, value }: ProfileFieldProps) {
   return (
     <div>
-      <dt className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
+      <dt className="text-xs font-medium text-slate-600">
         {label}
       </dt>
-      <dd className="mt-1.5 break-words text-xs font-medium leading-relaxed text-slate-900 [overflow-wrap:anywhere] sm:text-sm">
+      <dd className="mt-1.5 break-words text-sm font-semibold leading-relaxed text-slate-900 [overflow-wrap:anywhere] sm:text-sm">
         {value || "—"}
       </dd>
     </div>
@@ -41,26 +41,17 @@ export default function ProfileInformationCard() {
         <div className="flex items-center gap-2">
           <AccountHubIcon name="profile-information" size={18} className="h-[18px] w-[18px]" />
           <h2 className="text-sm font-semibold text-slate-900">
-            Profile Information
+            Profile details
           </h2>
         </div>
 
-        <button
-          type="button"
-          disabled
-          aria-disabled="true"
-          className="inline-flex min-h-8 cursor-not-allowed items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-400"
-        >
-          <AccountHubIcon name="edit" size={16} className="h-4 w-4 opacity-60" />
-          Edit
-        </button>
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-4 p-4 sm:gap-x-5 sm:gap-y-5 sm:p-5">
-        <ProfileField label="Full Name" value={fullName} />
+        <ProfileField label="Full name" value={fullName} />
         <ProfileField label="Email" value={email} />
         <ProfileField label="Mobile" value={mobile} />
-        <ProfileField label="Date Joined" value={dateJoined} />
+        <ProfileField label="Date joined" value={dateJoined} />
       </dl>
     </section>
   );

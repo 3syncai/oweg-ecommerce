@@ -254,7 +254,7 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
           ) : <Image src={imageUrl} alt={product.title} fill className={styles.image} sizes="(max-width: 639px) 160px, 190px" onError={showImageFallback ? () => setFailedImage(imageUrl) : undefined} />}
         </Link>
         <span className={styles.deal}>Deal</span>
-        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} className={styles.wishlist} aria-label={`Add ${product.title} to wishlist`} aria-pressed={isWishlisted}>
+        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} className={`${styles.wishlist} oweg-wishlist-motion`} aria-label={`Add ${product.title} to wishlist`} aria-pressed={isWishlisted}>
           <Heart size={18} fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden />
         </button>
       </div>

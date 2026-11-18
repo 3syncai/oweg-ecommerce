@@ -1,6 +1,7 @@
 "use client";
 
 import BrandLoader from "@/components/ui/BrandLoader";
+import { ArrowDown, CreditCard, LockKeyhole, MapPin, ShoppingBag } from "lucide-react";
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,7 +31,6 @@ import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import {maxRedeemableCoins as getMaxRedeemableCoins,eligibleCoinDiscount} from "@/lib/wallet-policy";
 import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
 import styles from "@/components/shopping/Shopping.module.css";
-import PurchaseJourney from "@/components/shopping/PurchaseJourney";
 import { cartVariantLabel } from "@/lib/cart-variant-label";
 
 type CartItem = {
@@ -632,7 +632,7 @@ function CheckoutPageInner() {
       // 1. Validate the code
       const validateRes = await fetch(`/api/store/validate-referral?code=${encodeURIComponent(trimmed)}`)
       const validateData = await validateRes.json();
-      
+
       if (!validateData.valid) {
         toast.error("Invalid referral code.");
         setReferralValidating(false);
@@ -651,7 +651,7 @@ function CheckoutPageInner() {
         });
 
         const saveData = await saveRes.json();
-        
+
         if (!saveRes.ok) {
            // It might fail if they already have one locked
            const reason = saveData?.message || saveData?.error || "Could not apply referral code.";
@@ -669,7 +669,7 @@ function CheckoutPageInner() {
       setReferralCodeApplied(true);
       setReferralAgentName(validateData.agent_name || "");
       toast.success(`Referral applied: ${validateData.agent_name}`);
-      
+
     } catch {
       toast.error("Error applying referral code.");
     } finally {
@@ -1832,11 +1832,20 @@ function CheckoutPageInner() {
     styles.paymentIdle;
 
   return (
-    <div className={`${styles.page} min-h-screen`}>
+    <div className={`${styles.page} ${styles.checkoutPage} min-h-screen`}>
       <div className={`${styles.container} ${styles.checkoutContainer}`}>
-        <div className={styles.heading}>
-          <div><h1>Checkout</h1><p>Confirm your delivery details and review your total.</p></div>
-          <PurchaseJourney current="checkout" />
+        <div className={styles.checkoutHeading}>
+          <div className={styles.checkoutTitle}>
+            <h1>Checkout</h1>
+            <span><LockKeyhole size={14} aria-hidden="true" /> Secure checkout</span>
+          </div>
+          {customer && (
+            <nav className={styles.checkoutNavigation} aria-label="Checkout sections">
+              <a href="#checkout-delivery"><MapPin size={16} aria-hidden="true" /> Delivery</a>
+              <a href="#checkout-payment"><CreditCard size={16} aria-hidden="true" /> Payment</a>
+              <a href="#checkout-review"><ShoppingBag size={16} aria-hidden="true" /> Summary</a>
+            </nav>
+          )}
         </div>
         <form id="checkout-form" onSubmit={handleSubmit} className={styles.checkoutForm}
           onChangeCapture={() => { if (formError) setFormError(""); }}
@@ -1866,15 +1875,10 @@ function CheckoutPageInner() {
               </section>
             ) : (
               <>
-            <section className={checkoutCard}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-[#2c342f]">Shipping details</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Where should we deliver this order?</p>
-                </div>
-                <span className="shrink-0 rounded-full bg-[#f0f5ef] px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                  Required
-                </span>
+            <section id="checkout-delivery" tabIndex={-1} className={checkoutCard} aria-labelledby="checkout-delivery-title">
+              <div className={styles.checkoutSectionHeading}>
+                <span><MapPin size={20} aria-hidden="true" /></span>
+                <h2 id="checkout-delivery-title">Delivery address</h2>
               </div>
               {addresses.some(hasDeliveryPincode) && (
                 <label className="block text-sm font-medium text-slate-700">
@@ -1899,125 +1903,153 @@ function CheckoutPageInner() {
                   </select>
                 </label>
               )}
-              {showSaveDefault && customer?.id && (
-                <label className="flex items-center gap-2.5 text-sm text-slate-600 rounded-xl bg-[#f7faf5] border border-slate-200/60 px-3 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={saveAsDefault}
-                    onChange={(e) => setSaveAsDefault(e.target.checked)}
-                    disabled={savingAddress}
-                    className="h-4 w-4 rounded border-slate-300 text-[var(--oweg-green)] focus:ring-[var(--oweg-green)]"
-                  />
-                  <span>Save this as default address for next time</span>
-                  {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
-                </label>
-              )}
-              <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
-                <Input
-                  required
-                  aria-label="First name"
-                  placeholder="First name"
-                  className={checkoutField}
-                  value={shipping.firstName}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, firstName: e.target.value });
-                  }}
-                />
-                <Input
-                  aria-label="Last name"
-                  placeholder="Last name"
-                  className={checkoutField}
-                  value={shipping.lastName}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, lastName: e.target.value });
-                  }}
-                />
-                <Input
-                  required
-                  type="email"
-                  aria-label="Email"
-                  placeholder="Email"
-                  value={shipping.email}
-                  onChange={(e) => { shippingTouched.current = true; setShipping({ ...shipping, email: normalizeEmail(e.target.value) }); }}
-                  onBlur={(e) => setShipping((prev) => ({ ...prev, email: normalizeEmail(e.target.value) }))}
-                  inputMode="email"
-                  title="Enter a valid email address"
-                  readOnly={!!customer?.email}
-                  className={
-                    customer?.email
-                      ? `${checkoutField} bg-slate-50 cursor-not-allowed`
-                      : checkoutField
-                  }
-                  aria-readonly={!!customer?.email}
-                />
-                <Input
-                  required
-                  type="tel"
-                  aria-label="Phone"
-                  placeholder="Phone"
-                  className={checkoutField}
-                  value={shipping.phone}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, phone: toDigits(e.target.value, 10) });
-                  }}
-                  inputMode="numeric"
-                  pattern="^[0-9]{10}$"
-                  maxLength={10}
-                  title="Enter a 10-digit phone number"
-                />
-                <Input
-                  required
-                  aria-label="Address line 1"
-                  placeholder="Address line 1"
-                  className={`md:col-span-2 ${checkoutField}`}
-                  value={shipping.address1}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, address1: e.target.value });
-                  }}
-                />
-                <Input
-                  aria-label="Address line 2"
-                  placeholder="Address line 2"
-                  className={`md:col-span-2 ${checkoutField}`}
-                  value={shipping.address2}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, address2: e.target.value });
-                  }}
-                />
-                <Input
-                  required
-                  aria-label="City"
-                  placeholder="City"
-                  className={checkoutField}
-                  value={shipping.city}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, city: e.target.value });
-                  }}
-                />
-                <div className="relative">
+              <div className={styles.checkoutAddressGrid}>
+                <label>
+                  <span>First name</span>
                   <Input
                     required
-                    aria-label="State"
-                    placeholder="State"
+                    aria-label="First name"
+                    autoComplete="given-name"
                     className={checkoutField}
-                    value={shipping.state}
-                    autoComplete="off"
-                    onFocus={() => setStateDropdownOpen(true)}
-                    onBlur={() => {
-                      setTimeout(() => setStateDropdownOpen(false), 120);
-                    }}
+                    value={shipping.firstName}
                     onChange={(e) => {
                       shippingTouched.current = true;
-                      setStateDropdownOpen(true);
-                      setShipping((prev) => ({ ...prev, state: e.target.value }));
+                      setShipping({ ...shipping, firstName: e.target.value });
                     }}
                   />
+                </label>
+                <label>
+                  <span>Last name <small>Optional</small></span>
+                  <Input
+                    aria-label="Last name"
+                    autoComplete="family-name"
+                    className={checkoutField}
+                    value={shipping.lastName}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, lastName: e.target.value });
+                    }}
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Email</span>
+                  <Input
+                    required
+                    type="email"
+                    aria-label="Email"
+                    autoComplete="email"
+                    value={shipping.email}
+                    onChange={(e) => { shippingTouched.current = true; setShipping({ ...shipping, email: normalizeEmail(e.target.value) }); }}
+                    onBlur={(e) => setShipping((prev) => ({ ...prev, email: normalizeEmail(e.target.value) }))}
+                    inputMode="email"
+                    title="Enter a valid email address"
+                    readOnly={!!customer?.email}
+                    className={
+                      customer?.email
+                        ? `${checkoutField} bg-slate-50 cursor-not-allowed`
+                        : checkoutField
+                    }
+                    aria-readonly={!!customer?.email}
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Mobile number</span>
+                  <Input
+                    required
+                    type="tel"
+                    aria-label="Phone"
+                    autoComplete="tel-national"
+                    className={checkoutField}
+                    value={shipping.phone}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, phone: toDigits(e.target.value, 10) });
+                    }}
+                    inputMode="numeric"
+                    pattern="^[0-9]{10}$"
+                    maxLength={10}
+                    title="Enter a 10-digit phone number"
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Address line 1</span>
+                  <Input
+                    required
+                    aria-label="Address line 1"
+                    autoComplete="address-line1"
+                    className={checkoutField}
+                    value={shipping.address1}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, address1: e.target.value });
+                    }}
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Address line 2 <small>Optional</small></span>
+                  <Input
+                    aria-label="Address line 2"
+                    autoComplete="address-line2"
+                    className={checkoutField}
+                    value={shipping.address2}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, address2: e.target.value });
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>City</span>
+                  <Input
+                    required
+                    aria-label="City"
+                    autoComplete="address-level2"
+                    className={checkoutField}
+                    value={shipping.city}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, city: e.target.value });
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>PIN code</span>
+                  <Input
+                    required
+                    aria-label="PIN code"
+                    autoComplete="postal-code"
+                    className={checkoutField}
+                    value={shipping.postalCode}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, postalCode: toDigits(e.target.value, 6) });
+                    }}
+                    inputMode="numeric"
+                    pattern="^[0-9]{6}$"
+                    maxLength={6}
+                    title="Enter a 6-digit PIN code"
+                  />
+                </label>
+                <div className={styles.checkoutWideField}>
+                  <label className="block">
+                    <span>State</span>
+                    <Input
+                      required
+                      aria-label="State"
+                      className={checkoutField}
+                      value={shipping.state}
+                      autoComplete="off"
+                      onFocus={() => setStateDropdownOpen(true)}
+                      onBlur={() => {
+                        setTimeout(() => setStateDropdownOpen(false), 120);
+                      }}
+                      onChange={(e) => {
+                        shippingTouched.current = true;
+                        setStateDropdownOpen(true);
+                        setShipping((prev) => ({ ...prev, state: e.target.value }));
+                      }}
+                    />
+                  </label>
                   {stateDropdownOpen && (
                     <div className="absolute z-20 mt-1.5 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200/80 bg-white shadow-xl">
                       {shippingStateSuggestions.length > 0 ? (
@@ -2041,26 +2073,24 @@ function CheckoutPageInner() {
                     </div>
                   )}
                 </div>
-                <Input
-                  required
-                  aria-label="PIN code"
-                  placeholder="PIN code"
-                  className={checkoutField}
-                  value={shipping.postalCode}
-                  onChange={(e) => {
-                    shippingTouched.current = true;
-                    setShipping({ ...shipping, postalCode: toDigits(e.target.value, 6) });
-                  }}
-                  inputMode="numeric"
-                  pattern="^[0-9]{6}$"
-                  maxLength={6}
-                  title="Enter a 6-digit PIN code"
-                />
               </div>
+              {showSaveDefault && customer?.id && (
+                <label className={styles.checkoutSaveAddress}>
+                  <input
+                    type="checkbox"
+                    checked={saveAsDefault}
+                    onChange={(e) => setSaveAsDefault(e.target.checked)}
+                    disabled={savingAddress}
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--oweg-green)] focus:ring-[var(--oweg-green)]"
+                  />
+                  <span>Save this as default address for next time</span>
+                  {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
+                </label>
+              )}
             </section>
 
             <section className={checkoutCard}>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-[#2c342f]">Billing details</h2>
                   <p className="text-xs text-slate-500 mt-0.5">Invoice address for this order</p>
@@ -2208,11 +2238,11 @@ function CheckoutPageInner() {
               )}
             </section>
 
-            <section className={checkoutCard}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-[#2c342f]">Payment</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Choose how you want to pay</p>
+            <section id="checkout-payment" tabIndex={-1} className={checkoutCard} aria-labelledby="checkout-payment-title">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className={styles.checkoutSectionHeading}>
+                  <span><CreditCard size={20} aria-hidden="true" /></span>
+                  <h2 id="checkout-payment-title">Payment method</h2>
                 </div>
                 <Image
                   src="/razorpay_logo.png"
@@ -2227,6 +2257,7 @@ function CheckoutPageInner() {
               <div className="flex gap-2 p-1 rounded-2xl bg-[#f0f5ef] border border-slate-200/50">
                 <button
                   type="button"
+                  aria-pressed={paymentMethod === "razorpay"}
                   onClick={() => setPaymentMethod("razorpay")}
                   className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                     paymentMethod === "razorpay" ? paymentTabActive : paymentTabIdle
@@ -2236,6 +2267,7 @@ function CheckoutPageInner() {
                 </button>
                 <button
                   type="button"
+                  aria-pressed={paymentMethod === "cod"}
                   onClick={() => setPaymentMethod("cod")}
                   className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                     paymentMethod === "cod" ? paymentTabActive : paymentTabIdle
@@ -2251,8 +2283,7 @@ function CheckoutPageInner() {
                     You&apos;ll pay securely with Razorpay
                   </p>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    After you tap Pay securely, Razorpay opens so you can choose UPI, card, net
-                    banking, wallet, and other methods in their up-to-date payment window.
+                    Choose UPI, card, net banking or wallet in Razorpay after you select Pay securely.
                   </p>
                 </div>
               ) : (
@@ -2300,9 +2331,10 @@ function CheckoutPageInner() {
 
             {/* AFFILIATE CODE (customer-shared "?ref=") — independent of the
                 referral code section above. */}
-            <section className={`${checkoutCard} space-y-3`}>
+            <details className={checkoutCard} open={Boolean(affiliateError)}>
+              <summary className="min-h-11 cursor-pointer content-center font-semibold">Affiliate code{affiliateCodeApplied ? " · Applied" : ""}</summary>
               <div>
-                <h2 className="text-lg font-semibold text-[#2c342f]">Do you have an affiliate code?</h2>
+
                 <p className="text-xs text-slate-500 mt-1">
                   Got a code from a friend or a shared OWEG product link? Add it here so they get rewarded for the referral.
                 </p>
@@ -2355,15 +2387,11 @@ function CheckoutPageInner() {
                   ) : null}
                 </>
               )}
-            </section>
+            </details>
 
             {/* WALLET COINS SECTION */}
             {customer && (
-              <section className={checkoutCard}>
-                <h2 className="text-lg font-semibold text-[#2c342f] flex items-center gap-2">
-                  <img src="/uploads/coin/oweg_bag.png" alt="Wallet" className="w-8 h-8" />
-                  Wallet Coins
-                </h2>
+              <details className={checkoutCard}><summary className="min-h-11 cursor-pointer content-center font-semibold">Wallet coins{coinDiscount > 0 ? " · Applied" : ""}</summary>
                 {walletLoading ? (
                   <p className="text-sm text-slate-500">Loading wallet...</p>
                 ) : walletBalance > 0 ? (
@@ -2449,16 +2477,17 @@ function CheckoutPageInner() {
                     <p className="text-xs mt-1 flex items-center gap-1">Earn 2% coins on every purchase! <img src="/uploads/coin/oweg_bag.png" alt="coins" className="w-4 h-4 inline" /></p>
                   </div>
                 )}
-              </section>
+              </details>
             )}
               </>
             )}
           </div>
 
           <div className={styles.checkoutSummary}>
-            <section className={checkoutCard}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-[#2c342f]">Order summary</h2>
+            <section id="checkout-review" tabIndex={-1} className={checkoutCard} aria-labelledby="checkout-review-title">
+              <div className={styles.checkoutSectionHeading}>
+                <span><ShoppingBag size={20} aria-hidden="true" /></span>
+                <h2 id="checkout-review-title">Order summary</h2>
               </div>
               <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/60 overflow-hidden bg-[#fafcf9]">
                 {cartItems.map((item) => (
@@ -2535,13 +2564,14 @@ function CheckoutPageInner() {
                 </div>
               )}
               <div className="rounded-xl border border-slate-200/70 bg-white p-4 space-y-3">
-                <p className="text-sm font-semibold text-[#2c342f]">Promo code</p>
+                <details open={Boolean(promoError)}>
+                  <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold text-[#2c342f]">Promo code{promoApplied ? " · Applied" : ""}</summary>
                 <div className="flex gap-2">
                   <input
                     value={promoCodeInput}
                     onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
                     aria-label="Promo code"
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     disabled={promoValidating}
                   />
                   {promoApplied ? (
@@ -2573,6 +2603,7 @@ function CheckoutPageInner() {
                 {promoError ? (
                   <p className="text-xs text-red-600">{promoError}</p>
                 ) : null}
+                </details>
               </div>
               <div className="space-y-2.5 text-sm text-slate-600">
                 <div className="flex justify-between">
@@ -2640,7 +2671,7 @@ function CheckoutPageInner() {
                 loading={processing}
                 loadingText={payButtonLabel}
               >
-                {payButtonLabel}
+                {customer ? payButtonLabel : "Sign in to continue"}
               </Button>
             </section>
           </div>
@@ -2651,10 +2682,12 @@ function CheckoutPageInner() {
             {customer && formError && <p className="rounded-lg bg-rose-50 p-2 text-rose-800">{formError}</p>}
             {checkoutSlow && <p className="pt-2 text-slate-600">Checkout is taking longer than usual.</p>}
           </div>
-          <div className="flex items-center justify-between gap-3 px-4 py-3.5">
-            <div className="min-w-0">
-              <p className="text-xs text-slate-500">Total payable</p>
-              <p className="text-lg font-bold text-[var(--oweg-green-dark)] truncate">{formatInr(payableTotal)}</p>
+          <div className={styles.checkoutPayContent}>
+            <div className={styles.checkoutPayTotal}>
+              <a href="#checkout-review" aria-label="View order summary">
+                <span>Total payable <ArrowDown size={13} aria-hidden="true" /></span>
+                <strong>{formatInr(payableTotal)}</strong>
+              </a>
               {totalsLoading ? (
                 <p className="text-[11px] text-slate-400">Updating totals…</p>
               ) : null}
@@ -2662,7 +2695,7 @@ function CheckoutPageInner() {
             <Button
               type={customer ? "submit" : "button"}
               form={customer ? "checkout-form" : undefined}
-              className={`shrink-0 min-h-11 px-5 py-3 ${checkoutCta}`}
+              className={`${styles.checkoutMobileAction} ${checkoutCta}`}
               onClick={customer ? undefined : openCheckoutLogin}
               disabled={payDisabled}
               loading={processing}
@@ -2670,8 +2703,10 @@ function CheckoutPageInner() {
                 paymentMethod === "cod" ? "Placing order…" : "Processing…"
               }
             >
-              {processing
-                ? paymentMethod === "cod"
+              {!customer
+                ? "Sign in to continue"
+                : processing
+                  ? paymentMethod === "cod"
                   ? "Placing order…"
                   : "Processing…"
                 : paymentMethod === "cod"

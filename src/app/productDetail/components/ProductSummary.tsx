@@ -366,12 +366,13 @@ const ProductSummary = ({
         </label>
       )}
       {selectionRequired && <p role="status" className="mt-3 text-sm text-[#155344]">Choose your size, colour or other options before adding to cart.</p>}
+      <section className={styles.buyingDetails} aria-label="Seller, delivery and purchase options">
       {sellerOffers}
       <div className={styles.stockRow}>
         <div className={`${styles.stock} ${hasStock ? styles.inStock : styles.outOfStock}`}>
           {selectionRequired ? 'Select options to check availability' : hasStock ? 'In stock' : 'Out of stock'}
         </div>
-        <button type="button" onClick={onSaveForLater} className={styles.wishlistButton}>
+        <button type="button" onClick={onSaveForLater} aria-pressed={isWishlisted} className={`${styles.wishlistButton} oweg-wishlist-motion`}>
           <Heart className="w-4 h-4" fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden="true" />
           Save to wishlist
         </button>
@@ -438,7 +439,7 @@ const ProductSummary = ({
             </button>
           </div>
       </div>
-
+      </section>
     </div>
   )
 }

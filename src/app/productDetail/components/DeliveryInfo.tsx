@@ -17,7 +17,7 @@ type DeliveryInfoProps = {
 
 const DeliveryInfo = ({ pinCode, pinStatus, pinMessage, onPinCodeChange, onCheck }: DeliveryInfoProps) => (
   <div className={styles.delivery}>
-    <div style={{ gridColumn: '1 / -1' }} className="rounded-xl border border-slate-200 p-4 space-y-2">
+    <div className={styles.deliveryCheck}>
       <h3 className="flex items-center gap-2 font-semibold"><MapPin size={18} aria-hidden /> Delivery & charges</h3>
       <form className="flex flex-col gap-2 min-[360px]:flex-row" onSubmit={event => { event.preventDefault(); onCheck() }}>
         <label className="sr-only" htmlFor="product-delivery-pin">Delivery pincode</label>

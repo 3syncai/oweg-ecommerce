@@ -2,7 +2,7 @@
 import { captureCartFlight } from "@/lib/cart-flight"
 import { useToggleWishlist } from "@/hooks/useWishlistMutations"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import BrandLoader from "@/components/ui/BrandLoader";
 import Link from 'next/link'
@@ -111,6 +111,17 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const openReview = searchParams?.get('tab') === 'reviews'
+  const lastProductPage = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    const page = `${pathname}:${productId}`
+    if (lastProductPage.current === page) return
+    lastProductPage.current = page
+    if (!openReview && !window.location.hash) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    }
+  }, [pathname, productId, openReview])
+
   const [quantity, setQuantity] = useState(1)
   const addCart = useAddToCart()
   const cartActionPending = addCart.isPending
