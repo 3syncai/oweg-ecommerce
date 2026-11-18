@@ -302,7 +302,12 @@ function SearchPageContent() {
                     icon={q ? SearchX : Search}
                     title={q ? "No matching products" : "What are you looking for?"}
                     description={q ? (hasFilters ? "Try removing a filter to widen your search." : `No products match “${q}”. Try a shorter name, brand, or category.`) : "Use the search bar to find a product, brand, or category."}>
-                    {q && hasFilters && <button type="button" onClick={clearFilters} className="mt-5 min-h-11 rounded-xl border border-[#d5e3d3] px-5 text-sm font-semibold text-[#155344]">Clear filters</button>}
+                    {q && (
+                      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                        {hasFilters && <button type="button" onClick={clearFilters} className="min-h-11 rounded-xl border border-[#d5e3d3] px-5 text-sm font-semibold text-[#155344]">Clear filters</button>}
+                        <Link href="/#home-categories" prefetch={false} className="inline-flex min-h-11 items-center rounded-xl bg-[#155344] px-5 text-sm font-semibold text-white">Browse categories</Link>
+                      </div>
+                    )}
                   </SearchMessage>
                 ) : (
                   <div className={styles.productGrid}>

@@ -585,3 +585,17 @@ body > div[style*="z-index: 9999"] {
   outline: 2px solid var(--oweg-green);
   outline-offset: 1px;
 }
+
+@keyframes oweg-heart-settle {
+  0% { transform: scale(.86); }
+  58% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oweg-wishlist-motion[aria-pressed="true"] > svg { animation: oweg-heart-settle 200ms ease-out; }
+  .oweg-confirmed-check { animation: oweg-confirmed-check 220ms ease-out both; }
+}
+@keyframes oweg-confirmed-check {
+  from { opacity: .55; transform: scale(.85); }
+}

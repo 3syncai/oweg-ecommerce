@@ -288,7 +288,10 @@ const Header: React.FC = () => {
     (isCategoryOverlayOpen ||
       isJoinOverlayOpen ||
       isProfileOverlayOpen ||
-      pathname?.startsWith('/wishlist'));
+      pathname?.startsWith('/wishlist') ||
+      pathname === '/account' ||
+      pathname === '/account/orders' ||
+      pathname === '/checkout');
   const [, setMobileProfileOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);

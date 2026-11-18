@@ -63,7 +63,7 @@ export function OrderConfirmation({ order, orderId, complete, failed, cod, messa
       <div className="mx-auto max-w-6xl">
         <div className="mb-7 flex flex-col gap-4 sm:mb-9 sm:flex-row sm:items-center sm:gap-5" role="status" aria-live="polite">
           <div className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl ${failed ? "bg-amber-100 text-amber-700" : complete ? "bg-[var(--oweg-green)] text-[var(--oweg-ink)] shadow-lg shadow-[var(--oweg-surface-tint)]" : "bg-[var(--oweg-surface-tint)] text-[var(--oweg-ink)]"}`}>
-            <Icon className={`h-8 w-8 ${!failed && !complete ? "motion-safe:animate-spin" : ""}`} aria-hidden />
+            <Icon className={`h-8 w-8 ${failed ? "" : complete ? "oweg-confirmed-check" : "motion-safe:animate-spin"}`} aria-hidden />
           </div>
           <div className="min-w-0">
             <p className={`mb-1 text-xs font-semibold uppercase tracking-[0.16em] ${failed ? "text-amber-700" : "text-[var(--oweg-ink-soft)]"}`}>{label}</p>

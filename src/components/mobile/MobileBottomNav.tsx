@@ -928,7 +928,7 @@ export default function MobileBottomNav() {
       <Overlay
         open={profileOpen}
         onClose={closeProfile}
-        panelClassName="bg-[var(--oweg-surface-subtle)]"
+        panelClassName="bg-white"
       >
         <MobileProfileSheet
           customer={customer}

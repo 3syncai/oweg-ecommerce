@@ -3,9 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowRight, CheckCircle2, ChevronDown, Clock3, Headphones, Loader2, Package, RefreshCw, RotateCcw, Search, ShoppingBag, Truck, XCircle } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ClipboardList, Clock3, Headphones, Loader2, Package, RefreshCw, RotateCcw, Search, ShoppingBag, SlidersHorizontal, Star, Truck, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -126,7 +125,8 @@ function OrderCard({
   const StatusIcon = STATUS_STYLE[bucket].icon;
   const trackFirst = cardActions.showTrack && (bucket === "processing" || bucket === "shipped");
   const buyAgain = cardActions.showBuyAgain && Boolean(variantId);
-  const moreActions = cardActions.showTrack || cardActions.showCancel || cardActions.showReturn || buyAgain;
+  const PrimaryActionIcon = trackFirst ? Truck : reviewHref ? Star : ClipboardList;
+  const moreActions = Boolean(reviewHref) || cardActions.showTrack || cardActions.showCancel || cardActions.showReturn || buyAgain;
   const actionHref = (action: "cancel" | "return") => detailHref + (detailHref.includes("?") ? "&" : "?") + "action=" + action;
   const secondaryAction = "flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-green-600 disabled:opacity-60";
 
@@ -154,7 +154,7 @@ function OrderCard({
 
   const productSummary = (
     <>
-      <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 sm:size-[88px]">
+      <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f6f8f5] sm:size-[88px]">
         {imageFailed ? (
           <Package className="size-8 text-slate-300" aria-hidden />
         ) : (
@@ -168,19 +168,19 @@ function OrderCard({
   );
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-t-2xl border-b border-slate-100 bg-slate-50/70 px-4 py-3.5 sm:grid-cols-[1fr_1fr_auto] sm:px-5">
+    <article className="rounded-xl border border-[#dce7df] bg-white">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 rounded-t-xl border-b border-[#e7eee8] bg-[#f7faf7] px-4 py-3 sm:px-5">
         <div>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Order placed</p>
+          <p className="text-[11px] font-medium text-slate-600">Order placed</p>
           <p className="mt-1 text-xs font-medium text-slate-700">{formatAccountDate(order.created_at)}</p>
         </div>
         <div className="text-right sm:text-left">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Order total</p>
+          <p className="text-[11px] font-medium text-slate-600">Order total</p>
           <p className="mt-1 text-xs font-semibold tabular-nums text-slate-900">{formatAccountCurrency(order.total, order.currency_code)}</p>
         </div>
-        {orderLabel && <div className="col-span-2 flex items-center gap-2 sm:col-span-1 sm:block sm:text-right">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Order number</p>
-          <p className="text-xs font-semibold text-slate-700 sm:mt-1">{orderLabel}</p>
+        {orderLabel && <div className="order-first min-w-0">
+          <p className="text-[11px] font-medium text-slate-600">Order number</p>
+          <p className="mt-1 break-all text-xs font-bold text-[#145448]">{orderLabel}</p>
         </div>}
       </div>
 
@@ -192,7 +192,7 @@ function OrderCard({
         ) : (
           <div className="flex items-center gap-3 sm:gap-4">{productSummary}</div>
         )}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset", STATUS_STYLE[bucket].className)}>
               <StatusIcon className="h-3.5 w-3.5" aria-hidden />
               {statusLabel}
@@ -206,21 +206,13 @@ function OrderCard({
         </div>
       </div>
 
-      {reviewHref && (
-        <div className="px-4 pb-3 sm:px-5">
-          <Link href={reviewHref} prefetch={false} className="inline-flex min-h-11 items-center rounded-lg border border-[#145448]/25 px-3 text-sm font-semibold text-[#145448] hover:bg-green-50 focus-visible:outline-2 focus-visible:outline-offset-2">
-            {reviewLinks.length > 1 ? "Rate & review items" : "Rate & review"}
-          </Link>
-        </div>
-      )}
-
       <div className={cn(
         "grid items-stretch gap-2 border-t border-slate-100 px-3 py-3 sm:flex sm:items-start sm:px-5",
         moreActions && "grid-cols-[minmax(0,1fr)_auto]",
       )}>
-        <Link href={trackFirst ? trackHref : detailHref} aria-label={trackFirst ? undefined : "View order details"} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#145448] px-2.5 py-2 text-center text-xs font-semibold text-white hover:bg-[#103e36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 sm:gap-2 sm:px-3 sm:text-sm">
-          <AccountHubIcon name={trackFirst ? "track-order" : "view-details"} size={16} className="size-4 shrink-0" />
-          {trackFirst ? "Track order" : <><span className="sm:hidden">Order details</span><span className="hidden sm:inline">View order details</span></>}
+        <Link href={trackFirst ? trackHref : reviewHref || detailHref} prefetch={reviewHref ? false : undefined} aria-label={trackFirst || reviewHref ? undefined : "View order details"} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#145448] px-2.5 py-2 text-center text-xs font-semibold text-white hover:bg-[#103e36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 sm:gap-2 sm:px-3 sm:text-sm">
+          <PrimaryActionIcon className="size-4 shrink-0" aria-hidden="true" />
+          {trackFirst ? "Track order" : reviewHref ? (reviewLinks.length > 1 ? "Rate & review items" : "Rate & review") : <><span className="sm:hidden">Order details</span><span className="hidden sm:inline">View order details</span></>}
         </Link>
         {moreActions && (
           <div ref={actionsRef} className="relative min-w-0 sm:ml-auto" onBlur={(event) => {
@@ -236,7 +228,7 @@ function OrderCard({
               More actions <ChevronDown className={cn("size-4 shrink-0", actionsOpen && "rotate-180")} aria-hidden />
             </button>
             {actionsOpen && <div className="absolute right-0 top-full z-20 mt-2 grid w-48 gap-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-              {trackFirst && cardActions.showViewDetails && <Link href={detailHref} className={secondaryAction} onClick={() => setActionsOpen(false)}><Package className="size-4" aria-hidden /> View order details</Link>}
+              {(trackFirst || reviewHref) && cardActions.showViewDetails && <Link href={detailHref} className={secondaryAction} onClick={() => setActionsOpen(false)}><Package className="size-4" aria-hidden /> View order details</Link>}
               {!trackFirst && cardActions.showTrack && <Link href={trackHref} className={secondaryAction} onClick={() => setActionsOpen(false)}><Truck className="size-4" aria-hidden /> Track order</Link>}
               {cardActions.showCancel && <Link href={actionHref("cancel")} className={secondaryAction} onClick={() => setActionsOpen(false)}><XCircle className="size-4" aria-hidden /> Cancel order</Link>}
               {cardActions.showReturn && <Link href={actionHref("return")} className={secondaryAction} onClick={() => setActionsOpen(false)}><RotateCcw className="size-4" aria-hidden /> Return / Replace</Link>}
@@ -301,38 +293,42 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
     );
   }
 
-  const wrapperClass = embedded ? "space-y-6" : "mx-auto max-w-5xl space-y-6 px-4 py-10";
+  const wrapperClass = embedded ? "space-y-4 sm:space-y-5" : "mx-auto max-w-5xl space-y-4 px-4 py-6 sm:space-y-5 sm:py-10";
 
   return (
     <div className={wrapperClass}>
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#326b29]">Your purchases</p>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Your orders</h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500">Track deliveries, view details, and manage your purchases.</p>
-        </div>
-        <Link href="/account/help" className="mt-1 inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-600 transition hover:border-green-200 hover:text-green-800">
-          <Headphones className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">Need help?</span>
-          <span className="sr-only sm:hidden">Help with your orders</span>
+      <header className="rounded-2xl bg-[#123e34] px-4 pb-5 pt-2 text-white sm:px-6 sm:pb-6 sm:pt-4">
+        <Link href="/account" className="inline-flex min-h-11 items-center gap-2 rounded text-xs font-semibold text-[#d6e9df] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 lg:hidden">
+          <ArrowLeft className="size-4" aria-hidden /> My account
         </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Your orders</h1>
+            <p className="mt-1 text-sm text-[#d6e9df]">Track deliveries and manage past purchases.</p>
+          </div>
+          <Link href="/account/help" className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-white/40 px-3 text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2">
+            <Headphones className="size-4" aria-hidden /> Order help
+          </Link>
+        </div>
       </header>
 
-      <section aria-label="Order filters" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <section aria-label="Order filters" className="rounded-xl border border-[#dce7df] bg-white">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5 p-3 sm:p-4">
-          <div className="relative col-span-2 min-w-0 sm:col-span-1">
+          <div className="relative col-span-1 min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search orders"
+              type="search"
               aria-label="Search by order ID or product"
               className="h-11 rounded-lg border-slate-200 bg-slate-50/50 pl-9 text-sm shadow-none placeholder:text-slate-400 focus-visible:ring-green-600/20"
             />
           </div>
 
-          <details className="group row-start-2 min-w-0">
+          <details className="group col-span-2 row-start-2 min-w-0">
             <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
+              <SlidersHorizontal className="size-4 shrink-0" aria-hidden />
               Filters{activeStat !== "all" || lastSixMonthsOnly ? " (" + (Number(activeStat !== "all") + Number(lastSixMonthsOnly)) + ")" : ""}
               <ChevronDown className="size-4 shrink-0 group-open:rotate-180" aria-hidden />
             </summary>
@@ -389,10 +385,10 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
             aria-busy={refreshing || undefined}
             aria-label="Refresh orders"
             title="Refresh orders"
-            className="col-start-2 row-start-2 inline-flex min-h-11 touch-pan-x touch-pinch-zoom select-none items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-green-800 disabled:opacity-50 sm:row-start-1 sm:touch-auto"
+            className="col-start-2 row-start-1 inline-flex min-h-11 touch-pan-x touch-pinch-zoom select-none items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-green-800 disabled:opacity-50 sm:touch-auto"
           >
             {releaseToRefresh ? <ArrowDown className="h-4 w-4" aria-hidden /> : <RefreshCw className={cn("h-4 w-4", refreshing && "motion-safe:animate-spin")} aria-hidden />}
-            <span className="sm:sr-only">{refreshing ? "Refreshing…" : releaseToRefresh ? "Release to refresh" : "Pull or tap to refresh"}</span>
+            <span className={releaseToRefresh ? "hidden min-[420px]:inline" : "sr-only sm:not-sr-only"}>{refreshing ? "Refreshing…" : releaseToRefresh ? "Release to refresh" : "Refresh"}</span>
           </button>
         </div>
       </section>

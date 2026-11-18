@@ -1,5 +1,21 @@
 .page { color: #17372f; }
 
+.guestCard {
+  min-height: clamp(248px, 40vh, 340px);
+  align-content: center;
+}
+.guestCard p { max-width: 32ch; line-height: 1.55; text-wrap: pretty; }
+.guestActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 18px;
+  margin-top: 10px;
+}
+.guestActions a { margin-top: 0; }
+.guestActions a:first-child { min-width: 112px; }
+
 .headerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
 .savedCount, .refreshing { color: #486056; font-size: .875rem; }
 .refreshing { display: inline-flex; align-items: center; gap: 6px; }

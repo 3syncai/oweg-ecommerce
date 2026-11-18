@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ArrowRight, Heart, HeartOff, ImageOff, Loader2, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { notifyCartAddSuccess, notifyWishlistRemoved, notifyWishlistSuccess, notifyActionError, SHOPPING_FEEDBACK_ID } from "@/lib/notifications";
-import AccountLoginPrompt from "@/components/account/AccountLoginPrompt";
+import { buildLoginUrl } from "@/lib/auth-redirect";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useToggleWishlist } from "@/hooks/useWishlistMutations";
 import { useAddToCart } from "@/hooks/useCartMutations";
@@ -180,11 +180,24 @@ export default function WishlistContent({ embedded = false }: WishlistContentPro
 
   if (!customer) {
     return (
-      <AccountLoginPrompt
-        redirect={embedded ? "/account/wishlist" : "/wishlist"}
-        title="Sign in to view your wishlist"
-        description="Login to see items you've saved for later."
-      />
+      <div className={cn(styles.page, !embedded && surface.surface)} data-wishlist-page>
+        <div className={embedded ? undefined : surface.container}>
+          <header className={surface.heading}>
+            <h1>Wishlist</h1>
+          </header>
+          <section className={cn(surface.empty, styles.guestCard)} aria-labelledby="wishlist-sign-in">
+            <span className={surface.icon}><Heart size={24} aria-hidden="true" /></span>
+            <h2 id="wishlist-sign-in">Sign in to see your saved items</h2>
+            <p>Save products you like and find them here whenever you’re ready.</p>
+            <div className={styles.guestActions}>
+              <Link href={buildLoginUrl(embedded ? "/account/wishlist" : "/wishlist")} className={surface.primary}>
+                Sign in <ArrowRight size={16} aria-hidden="true" />
+              </Link>
+              <Link href="/" className={styles.shoppingLink}>Continue shopping</Link>
+            </div>
+          </section>
+        </div>
+      </div>
     );
   }
 

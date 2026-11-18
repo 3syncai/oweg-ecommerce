@@ -1,7 +1,7 @@
 import { Headphones, Mail, MapPin, Phone, Send } from "lucide-react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { storefrontSupport } from "@/lib/storefront-links";
+import { storefrontRegisteredAddress, storefrontSupport } from "@/lib/storefront-links";
 
 export const metadata: Metadata = {
   title: "Contact and support",
@@ -24,11 +24,12 @@ const channels = [
     href: `mailto:${storefrontSupport.email}`,
   },
   {
-    title: "Visit",
-    copy: "Ascent Retechno India Pvt Ltd Av Pride, B-12, Ground Floor, Opp. Rahul, International School, Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.",
+    title: "Registered Address",
+    copy: storefrontRegisteredAddress.address,
+    company: storefrontRegisteredAddress.company,
     action: "Open Maps",
     icon: MapPin,
-    href: "https://www.google.com/maps/search/?api=1&query=19.429464%2C72.809120",
+    href: storefrontRegisteredAddress.mapsHref,
   },
 ];
 
@@ -57,7 +58,8 @@ export default function ContactPage() {
               <div className="oweg-icon-tile h-12 w-12 text-[var(--oweg-green-dark)]">
                 <ch.icon className="w-6 h-6" />
               </div>
-              <h3 className="mt-4 text-base font-semibold sm:text-lg">{ch.title}</h3>
+              <h2 className="mt-4 text-base font-semibold sm:text-lg">{ch.title}</h2>
+              {ch.company && <p className="mt-2 text-sm font-semibold">{ch.company}</p>}
               <p className="mt-2 text-sm text-[var(--oweg-ink-muted)]">{ch.copy}</p>
               <div className="mt-3 flex min-w-0 items-center gap-2 font-semibold text-[var(--oweg-green-dark)]">
                 <span className="min-w-0 [overflow-wrap:anywhere]">{ch.action}</span>
