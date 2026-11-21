@@ -52,8 +52,16 @@ export default function Page() {
   // Attach rejection handlers immediately; each boundary handles its own failure.
   void feed.catch(() => undefined);
   void deals.catch(() => undefined);
-  return <div className={styles.home}><h1 className="sr-only">Good finds. Everyday living.</h1><HomeShell />
-    <Suspense fallback={<FlashSaleSkeleton />}><Deals promise={deals} /></Suspense>
-    <Suspense fallback={<HomeFeedSkeleton />}><Feed promise={feed} /></Suspense>
-  </div>;
+  return (
+    <div className={styles.home}>
+      <h1 className="sr-only">Good finds. Everyday living.</h1>
+      <HomeShell />
+      <Suspense fallback={<FlashSaleSkeleton />}>
+        <Deals promise={deals} />
+      </Suspense>
+      <Suspense fallback={<HomeFeedSkeleton />}>
+        <Feed promise={feed} />
+      </Suspense>
+    </div>
+  );
 }
