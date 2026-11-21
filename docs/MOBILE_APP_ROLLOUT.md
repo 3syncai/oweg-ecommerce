@@ -60,7 +60,7 @@ Enable Push Notifications capability on the iOS target. Ensure Android `google-s
 
 1. Build Preview scheme / `applicationIdSuffix` flavor → `in.oweg.store.preview`.
 2. **Play:** create app “OWEG Preview” → Internal testing → upload AAB → add testers.
-3. **Apple:** App Store Connect app “OWEG Preview” → archive → TestFlight internal.
+3. **Apple:** App Store Connect app “OWEG Preview” → archive → TestFlight internal. Step-by-step (agreements, Bundle ID, Xcode Archive, compliance, testers, re-upload): [MOBILE_APP_BUILD_FOR_TEAM.md § 2b](./MOBILE_APP_BUILD_FOR_TEAM.md#2b-ios-testflight-app-store-connect--how-we-ship-preview).
 4. Verify on device: login, cart, Razorpay checkout, Account → Notifications enable, admin campaign delivery, notification tap opens path.
 
 ## Cutover to live OWEG listings

@@ -23,6 +23,7 @@ import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 import ForceUpdateGate from "@/components/mobile/ForceUpdateGate";
 import NativeBootSplash from "@/components/mobile/NativeBootSplash";
+import NativeStatusBar from "@/components/mobile/NativeStatusBar";
 import { CategoryNavigationProvider } from "@/components/modules/CategoryNavigation";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
@@ -134,6 +135,7 @@ export default function RootLayout({
                   <MobileBottomNavShell />
                   <ConditionalWhatsAppWidget />
                   <PWAInstallPrompt />
+                  <NativeStatusBar />
                   <NativeBootSplash />
                   <ForceUpdateGate />
                 </div>

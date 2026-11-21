@@ -44,8 +44,9 @@ const config = {
       showSpinner: false,
     },
     StatusBar: {
-      style: "DARK",
-      backgroundColor: "#fafbf7",
+      overlaysWebView: false,
+      style: "LIGHT",
+      backgroundColor: "#ffffff",
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],

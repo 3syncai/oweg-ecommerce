@@ -48,8 +48,12 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     StatusBar: {
-      style: "DARK",
-      backgroundColor: "#fafbf7",
+      // Do not draw WebView under the clock / Dynamic Island / notch.
+      // iOS/Android apply the real per-device inset (not a fixed padding hack).
+      overlaysWebView: false,
+      // Dark icons for light chrome (Style.Light in Capacitor = dark text).
+      style: "LIGHT",
+      backgroundColor: "#ffffff",
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
