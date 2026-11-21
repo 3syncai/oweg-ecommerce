@@ -606,7 +606,9 @@ const VendorDashboardPage = () => {
       if (!silent) setLoading(true)
       const [productsData, ordersData, returnsData, reportsData, payoutData, profileData, paymentsData] =
         await Promise.all([
-          vendorProductsApi.list({ limit: 50, offset: 0 }).catch(() => ({ products: [] })),
+          vendorProductsApi
+            .list({ limit: 50, offset: 0 })
+            .catch((): Awaited<ReturnType<typeof vendorProductsApi.list>> => ({ products: [] })),
           vendorOrdersApi.list().catch(() => ({ orders: [] })),
           vendorReturnsApi.list().catch(() => ({ return_requests: [] })),
           vendorReportsApi.list().catch(() => ({ reports: [] as VendorReportTicket[] })),
