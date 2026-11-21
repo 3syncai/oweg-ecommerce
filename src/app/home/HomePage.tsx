@@ -279,7 +279,7 @@ function HeroBanner() {
 
   return (
     <section
-      className={`${styles.hero} relative w-full overflow-hidden`}
+      className={`${styles.hero} relative w-full`}
       aria-roledescription="carousel"
       aria-label="Featured offers"
       onMouseEnter={() => setIsHovered(true)}
@@ -323,7 +323,7 @@ function HeroBanner() {
                     loading={idx === 0 ? 'eager' : 'lazy'}
                     fetchPriority={idx === 0 ? 'high' : 'auto'}
                     onLoad={() => setHeroReady(true)}
-                    className="object-contain object-center"
+                    className="object-contain object-top"
                     sizes="100vw"
                   />
                 </picture>
@@ -847,7 +847,12 @@ export default function HomePage({
 
 // Client interactivity for hero/categories never waits for the product feed.
 export function HomeShell() {
-  return <section className={styles.home} aria-label="Storefront highlights"><HeroBanner /><CategoryStrip /></section>;
+  return (
+    <section className={styles.home} aria-label="Storefront highlights">
+      <HeroBanner />
+      <CategoryStrip />
+    </section>
+  );
 }
 export function HomeFeedSkeleton() {
   return <div className="oweg-container" role="status" aria-label="Loading products" style={{ minHeight: 420 }}><ProductCarousel title="Popular picks" products={[]} loading /></div>;

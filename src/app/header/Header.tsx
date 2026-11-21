@@ -373,18 +373,25 @@ const Header: React.FC = () => {
     if (!headerEl) return;
 
     const syncHeaderHeight = () => {
-      const height = headerEl.getBoundingClientRect().height || 0;
+      // Force layout so safe-area / --oweg-sat padding is included before measure.
+      void headerEl.offsetHeight;
+      const rect = headerEl.getBoundingClientRect();
+      // scrollHeight includes overflow:visible children (e.g. location row past
+      // max-height on mobileSearchChrome) that still paint over the hero.
+      const height = Math.ceil(Math.max(rect.height || 0, headerEl.scrollHeight || 0));
       if (!chromeHiddenRef.current && height > 0) {
         expandedHeaderHeightRef.current = height;
       }
       // Always match the visual header. Keeping the expanded height while chrome
       // is hidden left an empty gap where the category row used to be.
-      const applied = height > 0 ? height : expandedHeaderHeightRef.current;
-      document.documentElement.style.setProperty("--app-header-height", `${applied}px`);
+      const base = height > 0 ? height : expandedHeaderHeightRef.current;
+      document.documentElement.style.setProperty("--app-header-height", `${base}px`);
     };
 
     syncHeaderHeight();
     window.addEventListener("resize", syncHeaderHeight);
+    window.addEventListener("oweg:safe-area", syncHeaderHeight);
+    window.visualViewport?.addEventListener("resize", syncHeaderHeight);
 
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
@@ -392,8 +399,16 @@ const Header: React.FC = () => {
       observer.observe(headerEl);
     }
 
+    // Native status-bar inset can arrive a tick after first paint.
+    const retry = window.setTimeout(syncHeaderHeight, 120);
+    const retry2 = window.setTimeout(syncHeaderHeight, 400);
+
     return () => {
       window.removeEventListener("resize", syncHeaderHeight);
+      window.removeEventListener("oweg:safe-area", syncHeaderHeight);
+      window.visualViewport?.removeEventListener("resize", syncHeaderHeight);
+      window.clearTimeout(retry);
+      window.clearTimeout(retry2);
       if (observer) observer.disconnect();
       document.documentElement.style.removeProperty("--app-header-height");
     };
@@ -1728,8 +1743,11 @@ const Header: React.FC = () => {
                       data-search-expanded={mobileSearchExpanded}
                       className={`${navStyles.mobileSearchChrome} transition-[max-height,opacity,transform,margin] duration-300 ease-out ${
                         showTopBarMobile
-                          ? "max-h-40 opacity-100 translate-y-0 mt-1"
-                          : "max-h-0 opacity-0 -translate-y-2 mt-0 pointer-events-none"
+                          ? // Must fit search + deliver-to row; max-h-40 was clipping
+                            // location out of the header box while it still painted
+                            // over the home hero ("THE HOME EDIT" cut off).
+                            "max-h-[280px] opacity-100 translate-y-0 mt-1"
+                          : "max-h-0 opacity-0 -translate-y-2 mt-0 pointer-events-none overflow-hidden"
                       }`}
                       aria-hidden={!mobileSearchExpanded}
                       inert={!mobileSearchExpanded}

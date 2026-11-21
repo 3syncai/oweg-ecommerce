@@ -444,10 +444,36 @@ html.debug-devtools-blocked body > *:not(.debug-devtools-shield) {
   top: 0;
   left: 0;
   right: 0;
+  /* Capacitor iOS: WebView is edge-to-edge; pad under notch/Dynamic Island.
+     --oweg-sat is set by NativeStatusBar when env(safe-area-inset-top) is 0. */
+  padding-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--oweg-sat, 0px)
+  );
+  background: var(--header-bg, #ffffff);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, "Helvetica Neue", Arial;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Keep storefront content below the fixed header + iOS safe area. */
+main[data-storefront-content] {
+  padding-top: var(
+    --app-header-height,
+    calc(136px + max(env(safe-area-inset-top, 0px), var(--oweg-sat, 0px)))
+  );
+}
+
+/* Capacitor: tiny extra clearance after accurate header measure. */
+html[data-capacitor="ios"] main[data-storefront-content],
+html[data-capacitor="android"] main[data-storefront-content] {
+  padding-top: calc(
+    var(
+      --app-header-height,
+      calc(160px + max(env(safe-area-inset-top, 0px), var(--oweg-sat, 0px)))
+    ) + 8px
+  ) !important;
 }
 
 .header-root button,
