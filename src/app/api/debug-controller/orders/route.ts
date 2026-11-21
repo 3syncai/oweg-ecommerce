@@ -11,48 +11,135 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-function getDeliverableOrder(row: {
+type WorkflowMap = Record<string, Record<string, unknown>>;
+
+function isDeliveredWorkflow(workflow: Record<string, unknown>): boolean {
+  const stage = String(workflow.stage || "").toLowerCase();
+  const tracking = String(workflow.shiprocket_status || "").toLowerCase();
+  return (
+    stage === "delivered" ||
+    tracking === "delivered" ||
+    typeof workflow.debug_marked_delivered_at === "string"
+  );
+}
+
+function isDispatchOrTransitWorkflow(workflow: Record<string, unknown>): boolean {
+  const stage = String(workflow.stage || "").toLowerCase();
+  const tracking = String(workflow.shiprocket_status || "").toLowerCase();
+  return (
+    stage === "to_dispatch" ||
+    stage === "in_transit" ||
+    tracking.includes("transit") ||
+    tracking.includes("dispatch")
+  );
+}
+
+function resolveSliceDisplayId(
+  parentDisplayId: string,
+  vendorId: string,
+  workflow: Record<string, unknown>,
+  vendorIds: string[]
+): string {
+  const fromWorkflow = String(workflow.vendor_display_id || "").trim();
+  if (fromWorkflow) return fromWorkflow;
+  if (parentDisplayId && vendorIds.length > 1) {
+    const index = vendorIds.indexOf(vendorId);
+    if (index >= 0) return `${parentDisplayId}-${index + 1}`;
+  }
+  return parentDisplayId || vendorId;
+}
+
+function vendorLabel(workflow: Record<string, unknown>, vendorId: string): string {
+  return (
+    String(workflow.store_name || "").trim() ||
+    String(workflow.vendor_name || "").trim() ||
+    vendorId.slice(-8)
+  );
+}
+
+/**
+ * One deliverable row per vendor slice so multi-seller orders show as
+ * #1259-1 / #1259-2 instead of a single parent #1259.
+ */
+function getDeliverableSlices(row: {
   id: string;
   display_id: string | number | null;
   email: string | null;
   created_at: string;
   metadata: Record<string, unknown> | null;
-}): DebugDeliverableOrder | null {
+}): DebugDeliverableOrder[] {
   const metadata = row.metadata || {};
-  const workflows = metadata.vendor_order_workflows as Record<string, Record<string, unknown>> | undefined;
-  const debugDeliveredAt = typeof metadata.debug_marked_delivered_at === "string"
-    ? metadata.debug_marked_delivered_at
-    : null;
-  if (debugDeliveredAt) {
-    return {
-      id: row.id,
-      displayId: String(row.display_id || row.id),
-      email: row.email,
-      createdAt: row.created_at,
-      stage: "delivered",
-      vendors: Object.keys(workflows || {}),
-    };
-  }
-  const vendorEntries = Object.entries(workflows || {}).filter(([, workflow]) => {
-    const stage = String(workflow.stage || "").toLowerCase();
-    const tracking = String(workflow.shiprocket_status || "").toLowerCase();
-    return stage === "to_dispatch" || stage === "in_transit" || tracking.includes("transit") || tracking.includes("dispatch");
-  });
-  const rootStatus = String(metadata.shiprocket_status || "").toLowerCase();
-  if (!vendorEntries.length && !rootStatus.includes("transit") && !rootStatus.includes("dispatch")) {
-    return null;
+  const workflows = (metadata.vendor_order_workflows || {}) as WorkflowMap;
+  const parentDisplayId = String(row.display_id || row.id);
+  const vendorIds = Object.keys(workflows).sort();
+
+  if (vendorIds.length > 0) {
+    const slices: DebugDeliverableOrder[] = [];
+    for (const vendorId of vendorIds) {
+      const workflow = workflows[vendorId] || {};
+      const stage = String(workflow.stage || "").toLowerCase();
+      // Skip settlement-only stubs that never entered fulfillment.
+      if (!stage && !workflow.accepted_at && !workflow.rtd_at) continue;
+
+      const delivered = isDeliveredWorkflow(workflow);
+      const active = isDispatchOrTransitWorkflow(workflow);
+      if (!delivered && !active) continue;
+
+      const inTransit =
+        stage === "in_transit" ||
+        String(workflow.shiprocket_status || "")
+          .toLowerCase()
+          .includes("transit");
+
+      slices.push({
+        id: row.id,
+        displayId: resolveSliceDisplayId(parentDisplayId, vendorId, workflow, vendorIds),
+        email: row.email,
+        createdAt: row.created_at,
+        stage: delivered ? "delivered" : inTransit ? "in_transit" : "to_dispatch",
+        vendorId,
+        vendorLabel: vendorLabel(workflow, vendorId),
+        vendors: [vendorId],
+      });
+    }
+    return slices;
   }
 
-  return {
-    id: row.id,
-    displayId: String(row.display_id || row.id),
-    email: row.email,
-    createdAt: row.created_at,
-    stage: vendorEntries.some(([, workflow]) => String(workflow.stage || "").toLowerCase() === "in_transit") || rootStatus.includes("transit")
-      ? "in_transit"
-      : "to_dispatch",
-    vendors: vendorEntries.map(([vendorId]) => vendorId),
-  };
+  // Legacy single-vendor / no-workflow orders: keep one parent row.
+  const debugDeliveredAt =
+    typeof metadata.debug_marked_delivered_at === "string"
+      ? metadata.debug_marked_delivered_at
+      : null;
+  const rootStatus = String(metadata.shiprocket_status || "").toLowerCase();
+  if (debugDeliveredAt) {
+    return [
+      {
+        id: row.id,
+        displayId: parentDisplayId,
+        email: row.email,
+        createdAt: row.created_at,
+        stage: "delivered",
+        vendorId: null,
+        vendorLabel: null,
+        vendors: [],
+      },
+    ];
+  }
+  if (!rootStatus.includes("transit") && !rootStatus.includes("dispatch")) {
+    return [];
+  }
+  return [
+    {
+      id: row.id,
+      displayId: parentDisplayId,
+      email: row.email,
+      createdAt: row.created_at,
+      stage: rootStatus.includes("transit") ? "in_transit" : "to_dispatch",
+      vendorId: null,
+      vendorLabel: null,
+      vendors: [],
+    },
+  ];
 }
 
 export async function GET(req: NextRequest) {
@@ -60,8 +147,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const db = getDebugControllerPool();
   try {
+    const db = getDebugControllerPool();
     const result = await db.query<{
       id: string;
       display_id: string | number | null;
@@ -77,9 +164,7 @@ export async function GET(req: NextRequest) {
       ORDER BY created_at DESC
       LIMIT 100
     `);
-    const orders = result.rows
-      .map(getDeliverableOrder)
-      .filter((order): order is DebugDeliverableOrder => Boolean(order));
+    const orders = result.rows.flatMap(getDeliverableSlices);
     const pendingResult = await db.query<{
       order_id: string;
       display_id: string | number | null;
@@ -119,7 +204,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ orders, pendingOrders });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to list deliverable orders" },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to list deliverable orders. Set ENABLE_DEBUG_CONTROLLER=true and DATABASE_URL on the storefront.",
+      },
       { status: 500 }
     );
   }

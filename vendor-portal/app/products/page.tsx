@@ -164,6 +164,10 @@ const VendorProductsPage = () => {
       setError(null)
     } catch (e: unknown) {
       if (controller.signal.aborted) return
+      if (e instanceof ApiError && e.status === 401) {
+        router.replace(`/login?redirect=${encodeURIComponent("/products")}`)
+        return
+      }
       if (e instanceof ApiError && e.status === 403) {
         router.push("/pending")
         return
@@ -177,18 +181,12 @@ const VendorProductsPage = () => {
   }, [router, page, searchDebounced, statusFilter])
 
   useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const { requireVendorSession } = await import("@/lib/vendor-auth-client")
-      const ok = await requireVendorSession((path) => router.replace(path))
-      if (cancelled || !ok) return
-      void loadProducts()
-    })()
+    // Load immediately — API 401/403 handles auth. Avoid an extra /api/auth/session wait.
+    void loadProducts()
     return () => {
-      cancelled = true
       productRequest.current?.abort()
     }
-  }, [router, loadProducts])
+  }, [loadProducts])
 
   useVendorLive({
     onInvalidate: () => {

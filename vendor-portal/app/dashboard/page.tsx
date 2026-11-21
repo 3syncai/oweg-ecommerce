@@ -278,6 +278,7 @@ function listingAmount(row: VendorPaymentsView["settlements"][number]) {
 
 function buildDashboardData(input: {
   products: any[]
+  productCounts?: { total?: number; published?: number; draft?: number; pending?: number } | null
   orders: any[]
   returns: any[]
   reports: VendorReportTicket[]
@@ -289,13 +290,23 @@ function buildDashboardData(input: {
   }>
   payments?: VendorPaymentsView | null
 }): DashboardData {
-  const { products, orders, returns, reports, payoutSummary, payoutTotals, payouts, payments } = input
+  const { products, productCounts, orders, returns, reports, payoutSummary, payoutTotals, payouts, payments } = input
 
-  const active = products.filter(isActiveProduct).length
-  const inactive = Math.max(products.length - active, 0)
-  const pendingApproval = products.filter(
+  const activeFromList = products.filter(isActiveProduct).length
+  const pendingFromList = products.filter(
     (product) => String(product?.metadata?.approval_status || "").toLowerCase() === "pending"
   ).length
+  const active =
+    typeof productCounts?.published === "number"
+      ? productCounts.published
+      : activeFromList
+  const pendingApproval =
+    typeof productCounts?.pending === "number"
+      ? productCounts.pending
+      : pendingFromList
+  const totalProducts =
+    typeof productCounts?.total === "number" ? productCounts.total : products.length
+  const inactive = Math.max(totalProducts - active, 0)
 
   const inTransitOrders = orders.filter((order) => orderStage(order) === "in_transit")
   const deliveredOrders = orders.filter((order) => orderStage(order) === "delivered")
@@ -413,7 +424,7 @@ function buildDashboardData(input: {
 
   return {
     products: {
-      totalPublished: products.length,
+      totalPublished: totalProducts,
       active,
       inactive,
       pendingApproval,
@@ -595,7 +606,7 @@ const VendorDashboardPage = () => {
       if (!silent) setLoading(true)
       const [productsData, ordersData, returnsData, reportsData, payoutData, profileData, paymentsData] =
         await Promise.all([
-          vendorProductsApi.list().catch(() => ({ products: [] })),
+          vendorProductsApi.list({ limit: 50, offset: 0 }).catch(() => ({ products: [] })),
           vendorOrdersApi.list().catch(() => ({ orders: [] })),
           vendorReturnsApi.list().catch(() => ({ return_requests: [] })),
           vendorReportsApi.list().catch(() => ({ reports: [] as VendorReportTicket[] })),
@@ -629,6 +640,7 @@ const VendorDashboardPage = () => {
       const nextVendor = profileData?.vendor || null
       const nextData = buildDashboardData({
         products: productsData?.products || [],
+        productCounts: productsData?.counts || null,
         orders: ordersData?.orders || [],
         returns: returnsData?.return_requests || [],
         reports: reportsData?.reports || [],

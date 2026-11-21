@@ -107,28 +107,50 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
         awb: awb ? String(awb) : null,
         shiprocketOrderId: shiprocketOrderId != null ? String(shiprocketOrderId) : null,
       })
+      const workflows = getVendorWorkflows(metadata)
+      const matchedWorkflow = vendorId ? workflows[vendorId] : null
+      const isSelfShip = matchedWorkflow?.shipping_method === "self"
       const deliveredAt = new Date().toISOString()
+
+      // Self-ship: tracking display only — never auto-advance stage or unlock earnings.
+      // Vendor POST /delivered (or admin) is the only path that marks self-ship delivered.
       let nextMetadata: Record<string, unknown> = {
         ...metadata,
-        shiprocket_status: status,
-        ...(status === "delivered" ? { shiprocket_delivered_at: deliveredAt } : {}),
+        ...(isSelfShip
+          ? {}
+          : {
+              shiprocket_status: status,
+              ...(status === "delivered" ? { shiprocket_delivered_at: deliveredAt } : {}),
+            }),
       }
-      if (vendorId && status === "delivered") {
+      if (vendorId && status === "delivered" && !isSelfShip) {
         nextMetadata = mergeVendorWorkflowMetadata(nextMetadata, vendorId, {
           stage: "delivered",
           shiprocket_status: "delivered",
           shiprocket_delivered_at: deliveredAt,
+        })
+      } else if (vendorId) {
+        // Always refresh tracking display fields for the matched vendor slice
+        nextMetadata = mergeVendorWorkflowMetadata(nextMetadata, vendorId, {
+          shiprocket_status: status || matchedWorkflow?.shiprocket_status || null,
+          easy_tracking_status: status || null,
+          easy_tracking_checked_at: deliveredAt,
+          ...(isSelfShip
+            ? {}
+            : status === "delivered"
+              ? { shiprocket_delivered_at: deliveredAt }
+              : {}),
         })
       }
       await orderModuleService.updateOrders(match.id, {
         metadata: nextMetadata,
       })
       console.log(
-        `[Order] Updated order ${match.id} metadata with status ${status} vendor=${vendorId || "unresolved"}`
+        `[Order] Updated order ${match.id} metadata with status ${status} vendor=${vendorId || "unresolved"} self_ship=${isSelfShip}`
       )
 
-      // Start vendor payout unlock only for the vendor whose shipment delivered
-      if (status === "delivered") {
+      // Easy Ship only: unlock earnings + storefront coins when carrier says delivered
+      if (status === "delivered" && !isSelfShip) {
         const pool = new Pool({ connectionString: process.env.DATABASE_URL })
         try {
           if (!vendorId) {
@@ -149,7 +171,6 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
           await pool.end().catch(() => {})
         }
 
-        // Also notify storefront webhook (coins + earnings redundancy)
         const frontendUrl = process.env.STOREFRONT_URL || process.env.NEXT_PUBLIC_APP_URL
         if (frontendUrl) {
           try {
@@ -169,6 +190,10 @@ export async function handleShiprocketWebhook(req: MedusaRequest, res: MedusaRes
             console.error(`[Order] storefront delivery webhook failed:`, webhookErr)
           }
         }
+      } else if (status === "delivered" && isSelfShip) {
+        console.log(
+          `[Order] Skipping self-ship auto-deliver for ${match.id} vendor=${vendorId} (awaiting vendor Mark Delivered)`
+        )
       }
     }
   }

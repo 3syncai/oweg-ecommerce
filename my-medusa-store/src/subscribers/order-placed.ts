@@ -5,7 +5,11 @@ import { generateInvoice } from "../services/invoice-generator"
 import { ensureOrderSettlementSnapshots } from "../lib/vendor-settlement-snapshot"
 import { getSharedDbPool } from "../lib/db-pool"
 import { listCurrentOrderVendorIds } from "../lib/vendor-cancellation-scope"
-import { getVendorWorkflow, mergeVendorWorkflowMetadata } from "../lib/vendor-order-workflow"
+import {
+  ensureVendorDisplayIds,
+  getVendorWorkflow,
+  mergeVendorWorkflowMetadata,
+} from "../lib/vendor-order-workflow"
 import { acceptanceDeadline, reassignmentAcceptanceDeadline } from "../lib/vendor-acceptance-deadline"
 import { withVendorOrderAssignmentLock } from "../lib/vendor-order-assignment-lock"
 import { isVendorVisibleOrder } from "../lib/vendor-order-visibility"
@@ -43,23 +47,32 @@ export default async function orderPlacedSubscriber({
       const vendorIds = await listCurrentOrderVendorIds(orderId, getSharedDbPool())
       let metadata = { ...(latest.metadata || {}) }
       let changed = false
+      // Always repair missing vendor slices (multi-vendor carts can race on first place).
       for (const vendorId of vendorIds) {
         const workflow = getVendorWorkflow(metadata, vendorId)
-        if (workflow.assigned_at || workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")) continue
+        if (workflow.assigned_at || workflow.accepted_at || (workflow.stage && workflow.stage !== "to_accept")) {
+          continue
+        }
         const start = reassignmentAcceptanceDeadline(metadata, vendorId)?.assigned_at
           || (latest.metadata as any)?.checkout_convert_authorized_at
           || (latest.metadata as any)?.cod_paid_at || latest.created_at || Date.now()
         const assignedAt = new Date(start).toISOString()
         metadata = mergeVendorWorkflowMetadata(metadata, vendorId, {
-          stage: "to_accept", assigned_at: assignedAt,
+          stage: "to_accept",
+          assigned_at: assignedAt,
           acceptance_deadline_at: acceptanceDeadline(assignedAt),
         })
         changed = true
       }
-      if (vendorIds.length && (changed || metadata.vendor_acceptance_initialized !== true))
+      // Distinct vendor-facing order numbers for multi-vendor carts (#1256-1, #1256-2, …)
+      const withDisplayIds = ensureVendorDisplayIds(metadata, vendorIds, latest.display_id)
+      metadata = withDisplayIds.metadata
+      changed = changed || withDisplayIds.changed
+      if (vendorIds.length && (changed || metadata.vendor_acceptance_initialized !== true)) {
         await orderModuleService.updateOrders(orderId, {
           metadata: { ...metadata, vendor_acceptance_initialized: true },
         })
+      }
     })
   } catch (error) {
     console.error(`[order-placed] acceptance deadline initialization failed for ${orderId}:`, error)

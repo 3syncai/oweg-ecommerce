@@ -4,6 +4,8 @@ type CouponLine = {
   vendor_id: string | null
   line_total: string | number
   coupon_discount: string | number
+  /** Flash-sale gap (list/original − paid unit) × qty, in rupees. */
+  flash_discount?: string | number
 }
 
 const money = (value: unknown): number => {
@@ -44,10 +46,11 @@ function allocateProportionally(discount: number, amounts: number[], subtotal: n
 }
 
 /**
- * Vendor cashback = customer coupon discount + redeemed wallet coins.
+ * Vendor cashback = customer coupon discount + redeemed wallet coins + flash-sale gap.
  * - coupon only → coupon amount
  * - coins only → coin amount
- * - coupon + coins → sum of both
+ * - flash only → list/original − flash paid price
+ * - any combination → sum of the parts
  * Amounts are actual applied discounts in rupees (never coupon face values).
  */
 export function allocateVendorCouponCashback(
@@ -76,12 +79,20 @@ export function allocateVendorCouponCashback(
 
   lines.forEach((line, index) => {
     if (!line.vendor_id) return
-    const share = Math.min(amounts[index], couponShares[index] + coinShares[index])
+    const couponCoin = Math.min(amounts[index], couponShares[index] + coinShares[index])
+    // Flash gap is platform-funded list→sale delta; not capped by paid line total.
+    const flash = money(line.flash_discount)
+    const share = couponCoin + flash
     result.set(line.vendor_id, (result.get(line.vendor_id) || 0) + share)
   })
   return new Map([...result].map(([vendor, cents]) => [vendor, cents / 100]))
 }
 
+/**
+ * Load per-vendor cashback for an order: coupons + coins + flash-sale deltas.
+ * Flash match: line unit_price ≈ flash_sale_item.flash_sale_price for that variant.
+ * Gap baseline: GREATEST(flash.original_price, line.compare_at_unit_price) − unit_price.
+ */
 export async function fetchVendorCouponCashback(orderId: string, pool: Pool): Promise<Map<string, number>> {
   const result = await pool.query<CouponLine & { metadata: Record<string, unknown> | null }>(`
     SELECT DISTINCT ON (oli.id)
@@ -101,7 +112,23 @@ export async function fetchVendorCouponCashback(orderId: string, pool: Pool): Pr
           AND UPPER(COALESCE(a.code, '')) NOT LIKE 'OWEG_COINS%'
           AND UPPER(COALESCE(a.code, '')) NOT LIKE 'COINS-%'
           AND COALESCE(a.provider_id, '') <> 'oweg-wallet'
-      ), 0) AS coupon_discount
+      ), 0) AS coupon_discount,
+      COALESCE((
+        SELECT GREATEST(
+          0,
+          GREATEST(
+            COALESCE(fsi.original_price::numeric, 0),
+            COALESCE(oli.compare_at_unit_price::numeric, 0)
+          ) - oli.unit_price::numeric
+        ) * GREATEST(COALESCE(oi.quantity, 1), 1)
+        FROM flash_sale_item fsi
+        WHERE fsi.variant_id = oli.variant_id
+          AND ABS(COALESCE(fsi.flash_sale_price::numeric, 0) - oli.unit_price::numeric) < 1
+        ORDER BY
+          CASE WHEN fsi.deleted_at IS NULL THEN 0 ELSE 1 END,
+          fsi.created_at DESC NULLS LAST
+        LIMIT 1
+      ), 0) AS flash_discount
     FROM order_item oi
     JOIN order_line_item oli ON oi.item_id = oli.id
     JOIN "order" o ON o.id = oi.order_id

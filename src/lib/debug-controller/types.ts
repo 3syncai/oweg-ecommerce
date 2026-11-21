@@ -65,6 +65,9 @@ export type DebugDeliverableOrder = {
   email: string | null;
   createdAt: string;
   stage: "to_dispatch" | "in_transit" | "delivered";
+  /** Vendor slice this row controls (multi-vendor orders list one row per seller). */
+  vendorId: string | null;
+  vendorLabel: string | null;
   vendors: string[];
 };
 

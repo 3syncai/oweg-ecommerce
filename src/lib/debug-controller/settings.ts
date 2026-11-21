@@ -27,8 +27,11 @@ function mergeSettings(
   };
 }
 
-async function readSettings(): Promise<DebugControllerSettings> {
-  const db = getDebugControllerPool();
+async function readSettingsFromDb(): Promise<DebugControllerSettings> {
+  // Public reads must work in production even when the debug admin flag is off.
+  const poolOpts = { allowWithoutDebugFlag: true };
+  await ensureDebugControllerTable(poolOpts);
+  const db = getDebugControllerPool(poolOpts);
   const query = {
     text: "SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1",
     values: [SETTINGS_KEY],
@@ -43,7 +46,7 @@ async function readSettings(): Promise<DebugControllerSettings> {
   } catch (error) {
     // Existing deployments only need SELECT. Bootstrap on a new database.
     if ((error as { code?: unknown } | null)?.code !== "42P01") throw error;
-    await ensureDebugControllerTable();
+    await ensureDebugControllerTable(poolOpts);
     return read();
   }
 }
@@ -51,33 +54,50 @@ async function readSettings(): Promise<DebugControllerSettings> {
 export async function getDebugControllerSettings(
   options?: { bypassCache?: boolean }
 ): Promise<DebugControllerSettings> {
-  if (!isDebugControllerEnabled()) return mergeSettings(null);
-  if (!getDebugControllerDatabaseUrl() && process.env.NODE_ENV !== "production") {
+  // CI / local builds without DATABASE_URL — use defaults, do not hit Postgres
+  if (!getDebugControllerDatabaseUrl()) {
     return mergeSettings(null);
   }
-  if (options?.bypassCache) return readSettings();
+
+  if (options?.bypassCache) {
+    try {
+      return await readSettingsFromDb();
+    } catch (error) {
+      console.error("[debug-controller/settings] bypass read failed, using defaults:", error);
+      return mergeSettings(null);
+    }
+  }
 
   const now = Date.now();
   if (cachedSettings && now < cacheExpiresAt) return cachedSettings;
   if (pendingRead) return pendingRead;
-  if (now < retryAt) throw new Error("Site settings temporarily unavailable");
+  if (now < retryAt && cachedSettings) return cachedSettings;
 
-  const read = readSettings().then(settings => {
-    if (pendingRead === read) {
-      cachedSettings = settings;
-      cacheExpiresAt = Date.now() + CACHE_TTL_MS;
-    }
-    return settings;
-  }).catch((error: unknown) => {
-    if (pendingRead === read) retryAt = Date.now() + FAILURE_BACKOFF_MS;
-    const code = (error as { code?: unknown } | null)?.code;
-    console.error("[site-settings] Database read failed", {
-      code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "unknown",
+  const read = readSettingsFromDb()
+    .then((settings) => {
+      if (pendingRead === read) {
+        cachedSettings = settings;
+        cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+        retryAt = 0;
+      }
+      return settings;
+    })
+    .catch((error: unknown) => {
+      if (pendingRead === read) retryAt = Date.now() + FAILURE_BACKOFF_MS;
+      const code = (error as { code?: unknown } | null)?.code;
+      console.error("[site-settings] Database read failed", {
+        code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "unknown",
+      });
+      // Storefront must stay up — serve last good cache or defaults.
+      if (cachedSettings) return cachedSettings;
+      const defaults = mergeSettings(null);
+      cachedSettings = defaults;
+      cacheExpiresAt = Date.now() + Math.min(CACHE_TTL_MS, 15_000);
+      return defaults;
+    })
+    .finally(() => {
+      if (pendingRead === read) pendingRead = null;
     });
-    throw error;
-  }).finally(() => {
-    if (pendingRead === read) pendingRead = null;
-  });
   pendingRead = read;
   return read;
 }
@@ -85,6 +105,9 @@ export async function getDebugControllerSettings(
 export async function updateDebugControllerSettings(
   patch: Partial<DebugControllerSettings>
 ): Promise<DebugControllerSettings> {
+  if (!isDebugControllerEnabled()) {
+    throw new Error("Debug controller is disabled (set ENABLE_DEBUG_CONTROLLER=true)");
+  }
   const current = await getDebugControllerSettings({ bypassCache: true });
   const next = mergeSettings({ ...current, ...patch });
 

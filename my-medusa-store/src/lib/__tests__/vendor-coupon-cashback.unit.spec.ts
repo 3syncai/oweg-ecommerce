@@ -1,7 +1,7 @@
 import { allocateVendorCouponCashback, fetchVendorCouponCashback } from "../vendor-coupon-cashback"
 
-const line = (vendor: string | null, total: number, coupon = 0) => ({
-  vendor_id: vendor, line_total: total, coupon_discount: coupon,
+const line = (vendor: string | null, total: number, coupon = 0, flash = 0) => ({
+  vendor_id: vendor, line_total: total, coupon_discount: coupon, flash_discount: flash,
 })
 
 describe("coupon + coin discounts as vendor cashback", () => {
@@ -67,11 +67,32 @@ describe("coupon + coin discounts as vendor cashback", () => {
     expect(allocateVendorCouponCashback({ promo_discount_rupees: 10 }, []).size).toBe(0)
   })
 
+  it("credits flash-sale list gaps as cashback on the selling vendor", () => {
+    expect([...allocateVendorCouponCashback(null, [
+      line("v1", 1090, 0, 705), line("v2", 849, 0, 651),
+    ])]).toEqual([["v1", 705], ["v2", 651]])
+  })
+
+  it("stacks flash-sale gaps on top of coupon and coin cashback", () => {
+    const amounts = allocateVendorCouponCashback(
+      { promo_discount_rupees: 50, coin_discount_rupees: 10 },
+      [line("v1", 1090, 0, 705)]
+    )
+    expect(amounts.get("v1")).toBe(765)
+  })
+
+  it("ignores invalid flash discounts and keeps coupon cashback", () => {
+    expect(allocateVendorCouponCashback(
+      { promo_discount_rupees: 20 },
+      [line("v1", 100, 0, -50), { vendor_id: "v1", line_total: 100, coupon_discount: 0, flash_discount: Infinity }]
+    ).get("v1")).toBe(20)
+  })
+
   it("loads the requested order and uses stored actual discounts including coins", async () => {
     const query = jest.fn().mockResolvedValue({ rows: [
-      { ...line("v1", 300), metadata: { promo_discount_rupees: 20, coin_discount_rupees: 5 } },
+      { ...line("v1", 300, 0, 100), metadata: { promo_discount_rupees: 20, coin_discount_rupees: 5 } },
     ] })
-    expect((await fetchVendorCouponCashback("ord_coupon", { query } as any)).get("v1")).toBe(25)
+    expect((await fetchVendorCouponCashback("ord_coupon", { query } as any)).get("v1")).toBe(125)
     expect(query.mock.calls[0][1]).toEqual(["ord_coupon"])
   })
 })

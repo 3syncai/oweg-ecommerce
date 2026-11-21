@@ -10,6 +10,8 @@ import {
   estimatePackageFromVendorItems,
   retrieveVendorOrThrow,
 } from "./vendor-shiprocket-pickup"
+import { getSharedDbPool } from "./db-pool"
+import { returnRequestOwnedByVendorProducts } from "./vendor-owned-returns"
 
 export type ReverseCourierSelection = {
   reverse_courier_id: number
@@ -256,6 +258,37 @@ export async function resolveVendorOwnedReturn(
   })
   if (!belongs) {
     return { error: { status: 403, message: "Return does not belong to this vendor" } as const }
+  }
+
+  const pool = getSharedDbPool()
+  const hasOwnedReturnLines = await returnRequestOwnedByVendorProducts(
+    pool,
+    returnRequestId,
+    Array.from(vendorProductIds)
+  )
+  if (!hasOwnedReturnLines) {
+    let fallbackOwned = false
+    try {
+      const returnItems = await returnService.listReturnRequestItems({
+        return_request_id: request.id,
+      })
+      const orderItems = order.items || []
+      fallbackOwned = (returnItems || []).some((line: any) => {
+        const original = orderItems.find((oi: any) => oi.id === line.order_item_id)
+        const productId = original?.product_id || original?.variant?.product_id
+        return productId && vendorProductIds.has(productId)
+      })
+    } catch {
+      fallbackOwned = false
+    }
+    if (!fallbackOwned) {
+      return {
+        error: {
+          status: 403,
+          message: "Return does not include items from this vendor",
+        } as const,
+      }
+    }
   }
 
   return {

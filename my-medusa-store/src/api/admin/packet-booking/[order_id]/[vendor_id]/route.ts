@@ -8,6 +8,7 @@ import {
   getVendorProductIds,
   getVendorWorkflow,
   pickVendorItems,
+  resolveVendorDisplayId,
   updateVendorOrderWorkflow,
 } from "../../../../../lib/vendor-order-workflow"
 import {
@@ -165,7 +166,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
 
     return res.json({
       order_id: order.id,
-      order_display_id: order.display_id,
+      order_display_id: resolveVendorDisplayId(order, vendorId, workflow),
+      parent_display_id: order.display_id ?? null,
       vendor_id: vendorId,
       vendor: {
         id: vendorId,

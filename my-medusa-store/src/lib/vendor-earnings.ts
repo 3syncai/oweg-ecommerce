@@ -521,16 +521,65 @@ export async function recomputeUnpaidVendorLedger(
   return updated;
 }
 
+/**
+ * Line items per vendor for an order.
+ *
+ * `excludeCancelledReturned` (used when SCHEDULING/BACKFILLING earnings) nets
+ * out quantities that no longer earn money:
+ *  - whole order cancelled (order.status = 'canceled') → every line is 0
+ *  - returned quantity actually received back → qty − received, where received is
+ *    the larger of Medusa's order_item.return_received_quantity and the custom
+ *    return_request_item rows whose request is received / refunded
+ * Fully cancelled/returned lines are dropped (line_total 0 is skipped below).
+ *
+ * Cancellation flows that only need to know WHICH vendors / what base were on
+ * the order (cancel-fee rows, hold-day lookups) keep the gross quantities.
+ */
 async function fetchVendorOrderEarnings(
   orderId: string,
-  pool: Pool
+  pool: Pool,
+  options?: { excludeCancelledReturned?: boolean }
 ): Promise<VendorOrderEarning[]> {
+  const excludeCancelledReturned = options?.excludeCancelledReturned === true;
   const result = await pool.query<LineQueryRow>(
     `
       SELECT DISTINCT ON (oli.id)
         p.metadata->>'vendor_id' AS vendor_id,
-        o.display_id::text AS order_display_id,
-        (oli.unit_price::numeric) * GREATEST(COALESCE(oi.quantity, 1), 1) AS line_total,
+        COALESCE(
+          NULLIF(
+            TRIM(
+              o.metadata->'vendor_order_workflows'->(p.metadata->>'vendor_id')->>'vendor_display_id'
+            ),
+            ''
+          ),
+          o.display_id::text
+        ) AS order_display_id,
+        (oli.unit_price::numeric) * (
+          CASE
+            WHEN $2::boolean THEN
+              CASE
+                WHEN LOWER(COALESCE(o.status::text, '')) IN ('canceled', 'cancelled') THEN 0
+                ELSE GREATEST(
+                  COALESCE(oi.quantity, 1)
+                  - GREATEST(
+                      COALESCE(oi.return_received_quantity, 0),
+                      COALESCE((
+                        SELECT SUM(rri.quantity)
+                        FROM return_request_item rri
+                        JOIN return_request rr ON rr.id = rri.return_request_id
+                        WHERE rri.deleted_at IS NULL
+                          AND rr.deleted_at IS NULL
+                          AND rr.order_id = o.id
+                          AND (rri.order_item_id = oi.id OR rri.order_item_id = oi.item_id)
+                          AND (rr.status IN ('received', 'refunded') OR rr.received_at IS NOT NULL)
+                      ), 0)
+                    ),
+                  0
+                )
+              END
+            ELSE GREATEST(COALESCE(oi.quantity, 1), 1)
+          END
+        ) AS line_total,
         p.metadata->>'gst_rate' AS product_gst_rate,
         p.metadata->>'tax_code' AS product_tax_code,
         oli.metadata->>'gst_rate' AS item_gst_rate,
@@ -549,9 +598,10 @@ async function fetchVendorOrderEarnings(
       WHERE oi.order_id = $1
         AND p.metadata->>'vendor_id' IS NOT NULL
         AND TRIM(p.metadata->>'vendor_id') <> ''
-      ORDER BY oli.id
+        AND oi.deleted_at IS NULL
+      ORDER BY oli.id, oi.version DESC NULLS LAST
     `,
-    [orderId]
+    [orderId, excludeCancelledReturned]
   );
 
   const byVendor = new Map<string, VendorOrderEarning>();
@@ -750,7 +800,7 @@ async function upsertVendorEarningRow(
   const logisticFee = resolveVendorLogisticFee(orderMetadata, row.vendor_id);
   const customerShippingTotal = resolveCustomerShippingTotal(orderMetadata, row.vendor_id);
   const returnFee = resolveVendorReturnFee(orderMetadata, row.vendor_id);
-  // Fee base = list taxable minus coupon/coin cashback so vendors are not
+  // Fee base = list taxable minus coupon/coin/flash cashback so vendors are not
   // commissioned on discounts the platform already refunds via cashback.
   const taxableNetOfCashback = Math.max(
     0,
@@ -951,9 +1001,9 @@ export async function scheduleVendorEarningsOnDelivery(
   }
 
   const allowed = new Set(scope);
-  const rows = (await fetchVendorOrderEarnings(orderId, pool)).filter((row) =>
-    allowed.has(row.vendor_id)
-  );
+  const rows = (
+    await fetchVendorOrderEarnings(orderId, pool, { excludeCancelledReturned: true })
+  ).filter((row) => allowed.has(row.vendor_id));
   if (rows.length === 0) {
     return { scheduled: 0, vendors: [] };
   }
@@ -977,42 +1027,120 @@ export async function backfillVendorEarnings(
   vendorId: string,
   pool: Pool
 ): Promise<number> {
-  const missing = await pool.query<{ order_id: string; delivered_at: string }>(
+  // Delivery is judged for THIS vendor only. A sibling vendor's delivered
+  // fulfillment must never credit this vendor:
+  //   (a) the fulfillment named by this vendor's workflow (medusa_fulfillment_id) has delivered_at, OR
+  //   (b) this vendor's workflow stage = 'delivered' / shiprocket_delivered_at is set, OR
+  //   (c) legacy fallback — this is the ONLY vendor on the order, it has no workflow
+  //       fulfillment mapping, and a (non-cancelled) fulfillment is delivered.
+  const missing = await pool.query<{
+    order_id: string;
+    order_updated_at: string | Date | null;
+    workflow_stage: string | null;
+    workflow_delivered_at: string | null;
+    workflow_alt_delivered_at: string | null;
+    own_fulfillment_delivered_at: string | Date | null;
+    legacy_fulfillment_delivered_at: string | Date | null;
+  }>(
     `
-      SELECT DISTINCT ON (o.id)
+      WITH vendor_orders AS (
+        SELECT DISTINCT o.id AS order_id
+        FROM "order" o
+        JOIN order_item oi ON oi.order_id = o.id AND oi.deleted_at IS NULL
+        JOIN order_line_item oli ON oi.item_id = oli.id
+        LEFT JOIN product_variant pv ON oli.variant_id = pv.id
+        LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
+        WHERE p.metadata->>'vendor_id' = $1
+          AND LOWER(COALESCE(o.status, '')) NOT IN ('canceled', 'cancelled')
+          AND NOT EXISTS (
+            SELECT 1 FROM vendor_earnings_log vel
+            WHERE vel.order_id = o.id AND vel.vendor_id = $1
+          )
+      )
+      SELECT
         o.id AS order_id,
-        f.delivered_at
-      FROM "order" o
-      JOIN order_item oi ON oi.order_id = o.id
-      JOIN order_line_item oli ON oi.item_id = oli.id
-      LEFT JOIN product_variant pv ON oli.variant_id = pv.id
-      LEFT JOIN product p ON COALESCE(oli.product_id, pv.product_id) = p.id
-      JOIN order_fulfillment ofu ON ofu.order_id = o.id
-      JOIN fulfillment f ON f.id = ofu.fulfillment_id
-      LEFT JOIN vendor_earnings_log vel
-        ON vel.order_id = o.id
-       AND vel.vendor_id = $1
-      WHERE p.metadata->>'vendor_id' = $1
-        AND f.delivered_at IS NOT NULL
-        AND vel.id IS NULL
-      ORDER BY o.id, f.delivered_at DESC
+        o.updated_at AS order_updated_at,
+        o.metadata->'vendor_order_workflows'->($1::text)->>'stage' AS workflow_stage,
+        o.metadata->'vendor_order_workflows'->($1::text)->>'shiprocket_delivered_at' AS workflow_delivered_at,
+        COALESCE(
+          o.metadata->'vendor_order_workflows'->($1::text)->>'self_delivered_at',
+          o.metadata->'vendor_order_workflows'->($1::text)->>'delivered_at'
+        ) AS workflow_alt_delivered_at,
+        (
+          SELECT MAX(f.delivered_at)
+          FROM order_fulfillment ofu
+          JOIN fulfillment f ON f.id = ofu.fulfillment_id
+          WHERE ofu.order_id = o.id
+            AND f.id = NULLIF(TRIM(o.metadata->'vendor_order_workflows'->($1::text)->>'medusa_fulfillment_id'), '')
+            AND f.delivered_at IS NOT NULL
+            AND f.canceled_at IS NULL
+        ) AS own_fulfillment_delivered_at,
+        CASE
+          WHEN NULLIF(TRIM(o.metadata->'vendor_order_workflows'->($1::text)->>'medusa_fulfillment_id'), '') IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+             FROM order_item oi2
+             JOIN order_line_item oli2 ON oi2.item_id = oli2.id
+             LEFT JOIN product_variant pv2 ON oli2.variant_id = pv2.id
+             LEFT JOIN product p2 ON COALESCE(oli2.product_id, pv2.product_id) = p2.id
+             WHERE oi2.order_id = o.id
+               AND oi2.deleted_at IS NULL
+               AND p2.metadata->>'vendor_id' IS NOT NULL
+               AND TRIM(p2.metadata->>'vendor_id') <> ''
+               AND TRIM(p2.metadata->>'vendor_id') <> $1
+           )
+          THEN (
+            SELECT MAX(f.delivered_at)
+            FROM order_fulfillment ofu
+            JOIN fulfillment f ON f.id = ofu.fulfillment_id
+            WHERE ofu.order_id = o.id
+              AND f.delivered_at IS NOT NULL
+              AND f.canceled_at IS NULL
+          )
+          ELSE NULL
+        END AS legacy_fulfillment_delivered_at
+      FROM vendor_orders vo
+      JOIN "order" o ON o.id = vo.order_id
+      ORDER BY o.id
     `,
     [vendorId]
   );
 
+  const parseDate = (value: unknown): Date | null => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
   let created = 0;
 
   for (const row of missing.rows) {
-    const earnings = await fetchVendorOrderEarnings(row.order_id, pool);
+    const ownFulfillmentAt = parseDate(row.own_fulfillment_delivered_at);
+    const workflowAt =
+      parseDate(row.workflow_delivered_at) || parseDate(row.workflow_alt_delivered_at);
+    const workflowDelivered =
+      String(row.workflow_stage || "").toLowerCase() === "delivered" ||
+      Boolean(String(row.workflow_delivered_at || "").trim());
+    const legacyAt = parseDate(row.legacy_fulfillment_delivered_at);
+
+    if (!ownFulfillmentAt && !workflowDelivered && !legacyAt) continue;
+
+    const deliveredAt =
+      ownFulfillmentAt ||
+      workflowAt ||
+      legacyAt ||
+      // Stage says delivered but no timestamp recorded — best available proxy.
+      parseDate(row.order_updated_at) ||
+      new Date();
+
+    // Net of cancelled / returned quantities (fully cancelled orders yield no rows).
+    const earnings = await fetchVendorOrderEarnings(row.order_id, pool, {
+      excludeCancelledReturned: true,
+    });
     const vendorRow = earnings.find((entry) => entry.vendor_id === vendorId);
     if (!vendorRow) continue;
 
-    await upsertVendorEarningRow(
-      row.order_id,
-      vendorRow,
-      pool,
-      new Date(row.delivered_at)
-    );
+    await upsertVendorEarningRow(row.order_id, vendorRow, pool, deliveredAt);
     created += 1;
   }
 

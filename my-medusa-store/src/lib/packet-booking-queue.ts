@@ -2,6 +2,7 @@ import { getSharedDbPool } from "./db-pool"
 import {
   getPaymentType,
   getVendorWorkflows,
+  resolveVendorDisplayId,
   type VendorOrderWorkflow,
 } from "./vendor-order-workflow"
 
@@ -113,7 +114,11 @@ export async function listPacketBookingQueue(opts?: {
 
       items.push({
         order_id: row.id,
-        order_display_id: row.display_id ?? null,
+        order_display_id: resolveVendorDisplayId(
+          { id: row.id, display_id: row.display_id, metadata: row.metadata },
+          vendorId,
+          workflow
+        ),
         vendor_id: vendorId,
         vendor_name: workflow.vendor_name || null,
         store_name: workflow.store_name || null,

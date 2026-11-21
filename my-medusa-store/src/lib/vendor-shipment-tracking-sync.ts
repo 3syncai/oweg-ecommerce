@@ -188,7 +188,13 @@ export async function syncVendorShipmentTracking(input: {
   await enqueueItlTracking(container, order, workflow, tracking)
   const status = normalizeTrackingStatus(tracking?.status || workflow.shiprocket_status || "")
   const ndrReason = normalizeNdrReason(tracking?.ndr_reason || workflow.ndr_reason)
-  const nextStage = stageFromTrackingStatus(status)
+  const isSelfShip = workflow.shipping_method === "self"
+  const rawNextStage = stageFromTrackingStatus(status)
+  // Self-ship: carrier/Track API/cron may update tracking display fields, but must
+  // NEVER advance the vendor stage to "delivered". Only vendor POST /delivered
+  // (or admin mark-delivered) can do that. Clamp to in_transit.
+  const nextStage: VendorOrderStage | null =
+    isSelfShip && rawNextStage === "delivered" ? "in_transit" : rawNextStage
   const isCod = getPaymentType(order as any) === "PostPaid"
 
   let metadata = order.metadata
@@ -256,13 +262,26 @@ export async function syncVendorShipmentTracking(input: {
   if (status === "cash_collected" && (workflow.stage === "delivered" || stage === "delivered")) {
     logistics.stage = "delivered"
   }
-  const { should_schedule_earnings, ...logisticsPatch } = logistics
+  const { should_schedule_earnings: rawScheduleEarnings, ...rawLogisticsPatch } = logistics
+  // Self-ship: strip delivered/COD-collected side effects from the carrier-driven patch
+  // and never schedule earnings from sync (earnings run on vendor/admin delivery).
+  let logisticsPatch: VendorOrderWorkflow = rawLogisticsPatch
+  if (isSelfShip) {
+    const {
+      stage: _dropStage,
+      shiprocket_delivered_at: _dropDeliveredAt,
+      cod_cash_collected_at: _dropCodCollectedAt,
+      ...selfSafePatch
+    } = rawLogisticsPatch
+    logisticsPatch = selfSafePatch
+  }
+  const should_schedule_earnings = isSelfShip ? false : rawScheduleEarnings
   const trackingStamp = {
     easy_tracking_status: status || null,
     easy_tracking_checked_at: new Date().toISOString(),
   }
 
-  if (nextStage === "delivered") {
+  if (nextStage === "delivered" && !isSelfShip) {
     const fulfillmentId = String(
       getVendorWorkflow(order.metadata, vendorId).medusa_fulfillment_id ||
         workflow.medusa_fulfillment_id ||
@@ -313,7 +332,7 @@ export async function syncVendorShipmentTracking(input: {
       ...trackingStamp,
     })
     updated = true
-    if (should_schedule_earnings || isCod) {
+    if (!isSelfShip && (should_schedule_earnings || isCod)) {
       try {
         const pool = getSharedDbPool()
         await scheduleVendorEarningsOnDelivery(order.id, pool, { vendorId })
