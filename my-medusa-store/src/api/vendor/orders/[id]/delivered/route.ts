@@ -56,25 +56,31 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    const stage = deriveVendorStage(result.order as any, workflow)
-    if (stage === "delivered" || workflow.stage === "delivered") {
+    // Gate "already delivered" strictly on THIS vendor's workflow / fulfillment,
+    // never on order-wide state that sibling vendors could have flipped.
+    const fulfillmentId = String(workflow.medusa_fulfillment_id || "")
+    const fulfillmentDelivered = Boolean(
+      fulfillmentId &&
+        (result.order.fulfillments || []).some(
+          (f: any) => f?.id === fulfillmentId && f?.delivered_at
+        )
+    )
+    if (workflow.stage === "delivered" || fulfillmentDelivered) {
       return res.json({
         order: formatVendorOrder(result.order, auth.vendor_id, result.vendorProductIds),
         already_delivered: true,
       })
     }
 
+    const stage = deriveVendorStage(result.order as any, workflow)
     if (stage !== "in_transit" && workflow.stage !== "in_transit") {
       return res.status(409).json({
         message: "Order must be In Transit before marking Delivered",
       })
     }
 
-    const fulfillmentId = String(workflow.medusa_fulfillment_id || "")
     if (fulfillmentId) {
-      const alreadyDelivered = (result.order.fulfillments || []).some(
-        (f: any) => f?.id === fulfillmentId && f?.delivered_at
-      )
+      const alreadyDelivered = fulfillmentDelivered
       if (!alreadyDelivered) {
         try {
           await markOrderFulfillmentAsDeliveredWorkflow(req.scope).run({

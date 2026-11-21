@@ -76,11 +76,7 @@ export async function apiRequest<T>(
     defaultHeaders['x-publishable-api-key'] = PUBLISHABLE_KEY
   }
 
-  // Prefer same-origin Medusa proxy + HttpOnly cookie; legacy localStorage token as fallback.
-  const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
-  if (token) {
-    defaultHeaders['Authorization'] = `Bearer ${token}`
-  }
+  // Session is the HttpOnly vendor_token cookie (same-origin proxy attaches Bearer server-side).
 
   try {
     const response = await axios<T>({
@@ -149,6 +145,7 @@ export const vendorAuthApi = {
           'Content-Type': 'application/json',
           ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
         },
+        withCredentials: true,
       })
       return response.data
     } catch (error: unknown) {
@@ -188,10 +185,11 @@ async function uploadStoreImage(file: File, vendorHint: string, type: 'logo' | '
   formData.append('file', file, file.name)
   const headers: Record<string, string> = {}
   if (PUBLISHABLE_KEY) headers['x-publishable-api-key'] = PUBLISHABLE_KEY
-  const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
-  if (token) headers.Authorization = `Bearer ${token}`
   try {
-    const { data } = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, { headers })
+    const { data } = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, {
+      headers,
+      withCredentials: true,
+    })
     const uploaded = data.files?.find((entry: { type?: string }) => entry.type === type) || data.files?.[0] || data
     if (!isUploadedFile(uploaded)) throw new Error('Upload returned no image URL')
     return uploaded
@@ -425,13 +423,13 @@ export const vendorBrandsApi = {
     const formData = new FormData()
     formData.append('brand_name', brandName)
     formData.append('file', file)
-    const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
     try {
       // Use the same routing as other vendor requests. Let the browser set the
       // multipart boundary; a direct backend request requires separate CORS.
       const response = await axios.post<{ authorization?: { file_url?: string } }>(
-        `${API_URL}/vendor/brands/upload-authorization`, formData,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+        `${API_URL}/vendor/brands/upload-authorization`,
+        formData,
+        { withCredentials: true }
       )
       return response.data
     } catch (error: unknown) {
@@ -591,15 +589,9 @@ export const vendorProductsApi = {
     if (productName) formData.append('productName', productName)
     formData.append(productName ? 'files' : 'file', file)
 
-    const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
-    const headers: Record<string, string> = {}
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-
     try {
       const response = await axios.post<UploadResponse>(`${API_URL}/vendor/products/upload-image`, formData, {
-        headers,
+        withCredentials: true,
       })
       return response.data
     } catch (error: unknown) {
@@ -816,17 +808,36 @@ export const vendorOrdersApi = {
   },
 
   generateInvoice: async (id: string) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('vendor_token') : null
     const response = await axios<Blob>({
       url: `${API_URL}/vendor/orders/${id}/invoice`,
       method: 'POST',
       responseType: 'blob',
       headers: {
         ...(PUBLISHABLE_KEY ? { 'x-publishable-api-key': PUBLISHABLE_KEY } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      withCredentials: true,
+      validateStatus: () => true,
     })
-    return response.data
+    const contentType = String(response.headers?.['content-type'] || '')
+    const data = response.data
+    if (response.status >= 400 || !/pdf/i.test(contentType)) {
+      let message = `Failed to generate invoice (${response.status || 'error'})`
+      if (data instanceof Blob) {
+        try {
+          const text = await data.text()
+          const parsed = JSON.parse(text) as { message?: string; error?: string }
+          message = parsed.message || parsed.error || message
+        } catch {
+          /* keep default */
+        }
+      }
+      throw new Error(message)
+    }
+    // Normalize MIME so browsers treat the download as a PDF even if the
+    // server omitted charset / used application/octet-stream.
+    return data.type && /pdf/i.test(data.type)
+      ? data
+      : new Blob([data], { type: 'application/pdf' })
   },
 
   markReadyToDispatch: async (id: string) => {
@@ -1505,15 +1516,10 @@ export const vendorReportsApi = {
     if (PUBLISHABLE_KEY) {
       headers["x-publishable-api-key"] = PUBLISHABLE_KEY
     }
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("vendor_token") : null
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`
-    }
-
     try {
       const response = await axios.post<UploadResponse>(`${API_URL}/store/vendor/uploads`, formData, {
         headers,
+        withCredentials: true,
       })
       const data = response.data
       const url = data?.files?.[0]?.url || data?.url

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { earnCoins, getPool } from "@/lib/wallet-ledger"
 import { creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins"
 import { verifyMedusaWebhookSecret } from "@/lib/medusa-webhook-auth"
+import { canAwardOrderLevelRewards } from "@/lib/vendor-order-delivery-gate"
 
 export const dynamic = "force-dynamic"
 
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
 
         const body = await req.json()
         const orderId = body.order_id || body.data?.id || body.id
+        const triggerVendorId = body.vendor_id ? String(body.vendor_id).trim() : null
 
         if (!orderId) {
             console.error("No order ID in webhook payload")
@@ -47,11 +49,28 @@ export async function POST(req: NextRequest) {
             const vendorEarningsResult = "handled_by_medusa"
 
             const orderResult = await pool.query(
-                `SELECT customer_id FROM "order" WHERE id = $1`,
+                `SELECT customer_id, metadata FROM "order" WHERE id = $1`,
                 [orderId]
             )
 
-            const customerId = orderResult.rows[0]?.customer_id as string | undefined
+            const orderRow = orderResult.rows[0] as
+                | { customer_id?: string; metadata?: unknown }
+                | undefined
+            const customerId = orderRow?.customer_id as string | undefined
+            const orderMetadata = orderRow?.metadata
+
+            const deliveryGate = canAwardOrderLevelRewards(orderMetadata)
+            if (!deliveryGate.allowed) {
+                return NextResponse.json({
+                    success: true,
+                    skipped: true,
+                    message: deliveryGate.reason || "waiting_for_sibling_vendors",
+                    order_id: orderId,
+                    trigger_vendor_id: triggerVendorId,
+                    pending_vendor_ids: deliveryGate.pending_vendor_ids || [],
+                    vendor_earnings: vendorEarningsResult,
+                })
+            }
 
             const summaryResult = await pool.query(
                 `SELECT totals

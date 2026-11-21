@@ -46,6 +46,12 @@ export type VendorOrderWorkflow = {
   acceptance_alert_sent_at?: string
   acceptance_alert_unavailable_at?: string
   accepted_at?: string
+  /**
+   * Vendor-facing order number for this seller's slice of a cart.
+   * Multi-vendor carts get distinct ids (e.g. 1256-1, 1256-2); single-vendor
+   * carts keep the parent Medusa display_id.
+   */
+  vendor_display_id?: string | null
   vendor_name?: string | null
   store_name?: string | null
   vendor_email?: string | null
@@ -220,6 +226,10 @@ export function mergeVendorWorkflowMetadata(
   ) {
     delete cleanPatch.settlement_rates
   }
+  // Never overwrite an assigned vendor-facing order number.
+  if (previous.vendor_display_id && cleanPatch.vendor_display_id == null) {
+    delete cleanPatch.vendor_display_id
+  }
   workflows[vendorId] = {
     ...previous,
     ...cleanPatch,
@@ -232,6 +242,59 @@ export function mergeVendorWorkflowMetadata(
     ...base,
     vendor_order_workflows: workflows,
   }
+}
+
+/**
+ * Give each vendor on a cart a stable vendor-facing order number.
+ * Multi-vendor: `${parent}-1`, `${parent}-2`, … (sorted by vendor id).
+ * Single-vendor: the parent Medusa display_id.
+ */
+export function ensureVendorDisplayIds(
+  metadata: Record<string, unknown> | null | undefined,
+  vendorIds: string[],
+  parentDisplayId: string | number | null | undefined
+): { metadata: Record<string, unknown>; changed: boolean } {
+  const parent = String(parentDisplayId ?? "").trim()
+  const ids = [...new Set(vendorIds.map((id) => String(id || "").trim()).filter(Boolean))].sort()
+  let next = { ...(metadata || {}) }
+  let changed = false
+  const multi = ids.length > 1
+
+  for (let i = 0; i < ids.length; i++) {
+    const vendorId = ids[i]
+    const workflow = getVendorWorkflow(next, vendorId)
+    if (String(workflow.vendor_display_id || "").trim()) continue
+    const vendor_display_id = !parent
+      ? multi
+        ? `V${i + 1}`
+        : ""
+      : multi
+        ? `${parent}-${i + 1}`
+        : parent
+    if (!vendor_display_id) continue
+    next = mergeVendorWorkflowMetadata(next, vendorId, { vendor_display_id })
+    changed = true
+  }
+
+  return { metadata: next, changed }
+}
+
+/** Vendor portal / ledger number for this seller's slice. */
+export function resolveVendorDisplayId(
+  order: OrderLike,
+  vendorId: string,
+  workflow?: VendorOrderWorkflow | null
+): string {
+  const wf = workflow || getVendorWorkflow(order.metadata, vendorId)
+  const fromWorkflow = String(wf.vendor_display_id || "").trim()
+  if (fromWorkflow) return fromWorkflow
+  const parent = String(order.display_id ?? "").trim()
+  const vendorIds = Object.keys(getVendorWorkflows(order.metadata)).sort()
+  if (parent && vendorIds.length > 1) {
+    const index = vendorIds.indexOf(vendorId)
+    if (index >= 0) return `${parent}-${index + 1}`
+  }
+  return parent || String(order.id || "")
 }
 
 export function normalizeTrackingStatus(status: unknown) {
@@ -318,8 +381,29 @@ export function isPreDispatchTrackingStatus(status: string) {
   ].includes(status)
 }
 
-export function deriveFulfillmentStatus(order: OrderLike) {
+/**
+ * Fulfillment status for an order.
+ *
+ * When a vendor workflow is supplied, ONLY that vendor's `medusa_fulfillment_id`
+ * fulfillment is inspected, so a sibling vendor's delivered/shipped fulfillment
+ * can never leak into this vendor's status. Missing id / not found => "pending".
+ *
+ * Without a workflow, the legacy order-wide aggregate is returned.
+ */
+export function deriveFulfillmentStatus(order: OrderLike, workflow?: VendorOrderWorkflow | null) {
   const fulfillments = order.fulfillments || []
+
+  if (workflow) {
+    const fulfillmentId = String(workflow.medusa_fulfillment_id || "").trim()
+    if (!fulfillmentId) return "pending"
+    const own = fulfillments.find((f) => f?.id === fulfillmentId)
+    if (!own) return "pending"
+    if (own.delivered_at) return "delivered"
+    if (own.canceled_at) return "canceled"
+    if (own.shipped_at) return "shipped"
+    return "processing"
+  }
+
   if (!fulfillments.length) return "pending"
   if (fulfillments.some((f) => f?.delivered_at)) return "delivered"
   if (fulfillments.some((f) => f?.shipped_at && !f?.canceled_at)) return "shipped"
@@ -342,15 +426,23 @@ export function deriveVendorStage(order: OrderLike, workflow: VendorOrderWorkflo
   if (isOrderCancelled(order)) return "cancelled"
 
   const metadata = order.metadata || {}
-  // Medusa fulfillment "Mark as delivered" must win over stale Shiprocket "shipped"
-  if (deriveFulfillmentStatus(order) === "delivered") return "delivered"
   if (workflow.stage === "delivered") return "delivered"
+
+  // Scoped to THIS vendor's fulfillment only — sibling deliveries must not leak.
+  const fulfillmentStatus = deriveFulfillmentStatus(order, workflow)
+  // Medusa fulfillment "Mark as delivered" must win over stale Shiprocket "shipped"
+  if (fulfillmentStatus === "delivered") return "delivered"
+
+  // Root shiprocket_status is shared across the order; with multiple vendor
+  // workflows it may belong to a sibling, so never fall back to it.
+  const hasMultipleVendorWorkflows = Object.keys(getVendorWorkflows(metadata)).length > 1
+  const rootShiprocketStatus = hasMultipleVendorWorkflows ? null : metadata.shiprocket_status
 
   const status = normalizeTrackingStatus(
     workflow.shiprocket_status ||
-      metadata.shiprocket_status ||
+      rootShiprocketStatus ||
       workflow.stage ||
-      deriveFulfillmentStatus(order)
+      fulfillmentStatus
   )
 
   if (status === "delivered") return "delivered"
@@ -486,6 +578,13 @@ export function pickVendorItems(order: OrderLike, vendorProductIds: string[]) {
     const productId = item.product_id || item.variant?.product_id
     return productId && ids.has(productId)
   })
+}
+
+/** Sum line totals for items belonging to this vendor (unit price × quantity). */
+export function sumVendorLineTotal(order: OrderLike, vendorProductIds: string[]): number {
+  return pickVendorItems(order, vendorProductIds).reduce((sum, item) => {
+    return sum + getItemUnitPrice(item) * getItemUnits(item)
+  }, 0)
 }
 
 export type VendorOrderSettlementRates = {
@@ -705,6 +804,37 @@ export async function enrichOrdersWithProductGstMetadata(
   }
 }
 
+/**
+ * Mirror of vendor-earnings.ts resolveCustomerShippingTotal: shipping is charged
+ * once per cart, so with multiple vendor workflows only the lexicographically
+ * first (sorted) workflow vendor receives it; every other vendor gets 0.
+ */
+function resolveVendorCustomerShipping(
+  metadata: Record<string, unknown> | null | undefined,
+  vendorId: string,
+  cartItemsTotal: number
+): number {
+  const chargedShipping = orderCustomerShipping(metadata, cartItemsTotal)
+  if (chargedShipping <= 0) return 0
+  const workflowVendors = Object.keys(getVendorWorkflows(metadata)).sort()
+  if (workflowVendors.length > 1 && workflowVendors[0] !== vendorId) return 0
+  return chargedShipping
+}
+
+/** Copy of order metadata whose vendor_order_workflows holds ONLY this vendor's entry. */
+function scrubMetadataForVendor(
+  metadata: Record<string, unknown> | null | undefined,
+  vendorId: string,
+  workflow: VendorOrderWorkflow
+): Record<string, unknown> | null | undefined {
+  if (!metadata) return metadata
+  const hasOwnEntry = Object.prototype.hasOwnProperty.call(getVendorWorkflows(metadata), vendorId)
+  return {
+    ...metadata,
+    vendor_order_workflows: hasOwnEntry ? { [vendorId]: workflow } : {},
+  }
+}
+
 export function formatVendorOrder(
   order: OrderLike,
   vendorId: string,
@@ -745,7 +875,11 @@ export function formatVendorOrder(
             ? Math.max(0, Number(workflow.easy_courier_rate) || 0)
             : 0,
         return_fee: Math.max(0, Number(workflow.return_courier_rate) || 0),
-        customer_shipping_total: orderCustomerShipping(order.metadata, cartItemsTotal),
+        customer_shipping_total: resolveVendorCustomerShipping(
+          order.metadata,
+          vendorId,
+          cartItemsTotal
+        ),
       })
     : null
   const cancellation = readCancellationInfo(order as any)
@@ -764,12 +898,20 @@ export function formatVendorOrder(
           workflow.easy_tracking_status || workflow.shiprocket_status
         )
 
+  const vendorDisplayId = resolveVendorDisplayId(order, vendorId, workflow)
+  const parentDisplayId = String(order.display_id ?? "").trim() || null
+
   const formatted: Record<string, any> = {
     ...order,
+    // Vendor portal shows this seller's slice id, not the shared cart id.
+    display_id: vendorDisplayId,
+    parent_display_id: parentDisplayId,
+    vendor_display_id: vendorDisplayId,
     items: vendorItems,
     product_names: vendorItems.map((item) => item.title).filter(Boolean),
     total: total || (order.summary as any)?.current_order_total || 0,
-    fulfillment_status: deriveFulfillmentStatus(order),
+    fulfillment_status: deriveFulfillmentStatus(order, workflow),
+    metadata: scrubMetadataForVendor(order.metadata, vendorId, workflow),
     vendor_stage: stage,
     acceptance_deadline_at: workflow.acceptance_deadline_at || null,
     acceptance_timed_out_at: workflow.acceptance_timed_out_at || null,

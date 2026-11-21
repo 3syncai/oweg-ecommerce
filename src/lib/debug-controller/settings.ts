@@ -29,11 +29,12 @@ function mergeSettings(
 
 async function readSettings(): Promise<DebugControllerSettings> {
   const db = getDebugControllerPool();
+  // query_timeout is supported by node-postgres at runtime; @types/pg omits it.
   const query = {
     text: "SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1",
     values: [SETTINGS_KEY],
     query_timeout: 3000,
-  };
+  } as { text: string; values: string[] };
   const read = async () => {
     const result = await db.query<{ value: Partial<DebugControllerSettings> }>(query);
     return mergeSettings(result.rows[0]?.value);
@@ -48,6 +49,12 @@ async function readSettings(): Promise<DebugControllerSettings> {
   }
 }
 
+/**
+ * Site / checkout settings.
+ * - Debug controller off → safe defaults, no DB (checkout stays open).
+ * - Debug controller on → read DB with short cache; failures throw so guards
+ *   can return a temporary 503 instead of silently opening checkout.
+ */
 export async function getDebugControllerSettings(
   options?: { bypassCache?: boolean }
 ): Promise<DebugControllerSettings> {
@@ -62,22 +69,25 @@ export async function getDebugControllerSettings(
   if (pendingRead) return pendingRead;
   if (now < retryAt) throw new Error("Site settings temporarily unavailable");
 
-  const read = readSettings().then(settings => {
-    if (pendingRead === read) {
-      cachedSettings = settings;
-      cacheExpiresAt = Date.now() + CACHE_TTL_MS;
-    }
-    return settings;
-  }).catch((error: unknown) => {
-    if (pendingRead === read) retryAt = Date.now() + FAILURE_BACKOFF_MS;
-    const code = (error as { code?: unknown } | null)?.code;
-    console.error("[site-settings] Database read failed", {
-      code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "unknown",
+  const read = readSettings()
+    .then((settings) => {
+      if (pendingRead === read) {
+        cachedSettings = settings;
+        cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+      }
+      return settings;
+    })
+    .catch((error: unknown) => {
+      if (pendingRead === read) retryAt = Date.now() + FAILURE_BACKOFF_MS;
+      const code = (error as { code?: unknown } | null)?.code;
+      console.error("[site-settings] Database read failed", {
+        code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "unknown",
+      });
+      throw error;
+    })
+    .finally(() => {
+      if (pendingRead === read) pendingRead = null;
     });
-    throw error;
-  }).finally(() => {
-    if (pendingRead === read) pendingRead = null;
-  });
   pendingRead = read;
   return read;
 }

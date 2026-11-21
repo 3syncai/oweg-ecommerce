@@ -8,7 +8,8 @@ const API_GROUPS: Array<[AdminPermission, string[]]> = [
   ["returns", ["return-requests", "return-packet-booking", "returns", "return-reasons", "claims", "exchanges"]],
   ["vendors", ["vendors", "brand-authorizations"]],
   ["marketing", ["flash-sale", "featured-brands", "mega-menu-banners", "mobile-shop-menu", "promotions", "campaigns", "push-notifications"]],
-  ["accounting", ["vendor-payouts", "vendor-commission", "vendor-reports", "vendor-marketplace-tax"]],
+  // vendor-earnings: debug/storefront bridge + payout unlock on delivery (service keys allowed)
+  ["accounting", ["vendor-payouts", "vendor-commission", "vendor-reports", "vendor-marketplace-tax", "vendor-earnings"]],
   ["partners", ["affiliate"]],
 ]
 

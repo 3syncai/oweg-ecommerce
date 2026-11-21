@@ -102,7 +102,28 @@ async function syncMeiliIndex() {
   };
 }
 
-async function markOrderDelivered(orderId: string) {
+function isEligibleDebugDelivery(workflow: Record<string, unknown> | null | undefined) {
+  const stage = String(workflow?.stage || "").toLowerCase();
+  const tracking = String(workflow?.shiprocket_status || "").toLowerCase();
+  return (
+    stage === "to_dispatch" ||
+    stage === "in_transit" ||
+    tracking.includes("transit") ||
+    tracking.includes("dispatch")
+  );
+}
+
+function isWorkflowDelivered(workflow: Record<string, unknown> | null | undefined) {
+  const stage = String(workflow?.stage || "").toLowerCase();
+  const tracking = String(workflow?.shiprocket_status || "").toLowerCase();
+  return (
+    stage === "delivered" ||
+    tracking === "delivered" ||
+    typeof workflow?.debug_marked_delivered_at === "string"
+  );
+}
+
+async function markOrderDelivered(orderId: string, vendorId?: string | null) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
     const result = await pool.query<{
@@ -117,19 +138,26 @@ async function markOrderDelivered(orderId: string) {
 
     const metadata = { ...(order.metadata || {}) } as Record<string, any>;
     const workflows = { ...(metadata.vendor_order_workflows || {}) } as Record<string, any>;
-    const eligibleVendors = Object.entries(workflows).filter(([, workflow]) => {
-      const stage = String(workflow?.stage || "").toLowerCase();
-      const tracking = String(workflow?.shiprocket_status || "").toLowerCase();
-      return stage === "to_dispatch" || stage === "in_transit" || tracking.includes("transit") || tracking.includes("dispatch");
-    });
+    const eligibleVendors = Object.entries(workflows).filter(([, workflow]) =>
+      isEligibleDebugDelivery(workflow as Record<string, unknown>)
+    );
+    const targetVendors = vendorId
+      ? eligibleVendors.filter(([id]) => id === vendorId)
+      : eligibleVendors;
+    if (vendorId && !workflows[vendorId]) {
+      throw new Error("Vendor slice not found on this order");
+    }
+    if (vendorId && !targetVendors.length) {
+      throw new Error("This vendor slice is not in dispatch or in-transit");
+    }
     const rootStatus = String(metadata.shiprocket_status || "").toLowerCase();
-    if (!eligibleVendors.length && !rootStatus.includes("transit") && !rootStatus.includes("dispatch")) {
+    if (!targetVendors.length && !rootStatus.includes("transit") && !rootStatus.includes("dispatch")) {
       throw new Error("Only dispatch or in-transit orders can be marked delivered");
     }
 
     const deliveredAt = new Date().toISOString();
-    for (const [vendorId, workflow] of eligibleVendors) {
-      workflows[vendorId] = {
+    for (const [id, workflow] of targetVendors) {
+      workflows[id] = {
         ...workflow,
         stage: "delivered",
         shiprocket_status: "delivered",
@@ -141,22 +169,24 @@ async function markOrderDelivered(orderId: string) {
     metadata.vendor_order_workflows = workflows;
     // Do not mark the whole order as delivered while another vendor's slice
     // is still moving through dispatch/in-transit.
-    const allVendorWorkflowsDelivered = Object.values(workflows).every((workflow: any) => {
+    const activeWorkflows = Object.values(workflows).filter((workflow: any) => {
       const stage = String(workflow?.stage || "").toLowerCase();
-      const tracking = String(workflow?.shiprocket_status || "").toLowerCase();
-      return stage === "delivered" || tracking === "delivered";
+      return Boolean(stage || workflow?.accepted_at || workflow?.rtd_at);
     });
+    const allVendorWorkflowsDelivered =
+      activeWorkflows.length > 0 &&
+      activeWorkflows.every((workflow: any) => isWorkflowDelivered(workflow));
     if (!Object.keys(workflows).length || allVendorWorkflowsDelivered) {
       metadata.shiprocket_status = "delivered";
       metadata.shiprocket_delivered_at = deliveredAt;
+      metadata.debug_marked_delivered_at = deliveredAt;
     }
-    metadata.debug_marked_delivered_at = deliveredAt;
 
     await pool.query(
       `UPDATE "order" SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2`,
       [JSON.stringify(metadata), orderId]
     );
-    const vendorIds = eligibleVendors.map(([vendorId]) => vendorId);
+    const vendorIds = targetVendors.map(([id]) => id);
     const earnings = await scheduleVendorEarningsOnDelivery(orderId, pool, {
       deliveredAt: new Date(deliveredAt),
       ...(vendorIds.length ? { vendorIds } : {}),
@@ -167,26 +197,51 @@ async function markOrderDelivered(orderId: string) {
   }
 }
 
-async function syncDebugDeliveryLedger(orderId: string) {
+async function syncDebugDeliveryLedger(orderId: string, vendorId?: string | null) {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   try {
     const result = await pool.query<{ metadata: Record<string, unknown> | null }>(
       `SELECT metadata FROM "order" WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
       [orderId]
     );
-    const metadata = result.rows[0]?.metadata || {};
-    const deliveredAt = typeof metadata.debug_marked_delivered_at === "string"
-      ? new Date(metadata.debug_marked_delivered_at)
-      : null;
+    const metadata = (result.rows[0]?.metadata || {}) as Record<string, any>;
+    const workflows = (metadata.vendor_order_workflows || {}) as Record<string, any>;
+
+    let deliveredAt: Date | null = null;
+    let vendorIds: string[] = [];
+    if (vendorId) {
+      const workflow = workflows[vendorId];
+      if (!workflow || !isWorkflowDelivered(workflow)) {
+        throw new Error("This vendor slice was not delivered through the debug controller");
+      }
+      const stamp =
+        typeof workflow.debug_marked_delivered_at === "string"
+          ? workflow.debug_marked_delivered_at
+          : typeof workflow.shiprocket_delivered_at === "string"
+            ? workflow.shiprocket_delivered_at
+            : typeof metadata.debug_marked_delivered_at === "string"
+              ? metadata.debug_marked_delivered_at
+              : null;
+      deliveredAt = stamp ? new Date(stamp) : null;
+      vendorIds = [vendorId];
+    } else {
+      const stamp =
+        typeof metadata.debug_marked_delivered_at === "string"
+          ? metadata.debug_marked_delivered_at
+          : null;
+      deliveredAt = stamp ? new Date(stamp) : null;
+      vendorIds = Object.keys(workflows).filter((id) => isWorkflowDelivered(workflows[id]));
+      if (!vendorIds.length) vendorIds = Object.keys(workflows);
+    }
+
     if (!deliveredAt || Number.isNaN(deliveredAt.getTime())) {
       throw new Error("This order was not delivered through the debug controller");
     }
-    const workflows = metadata.vendor_order_workflows as Record<string, unknown> | undefined;
     const earnings = await scheduleVendorEarningsOnDelivery(orderId, pool, {
       deliveredAt,
-      vendorIds: Object.keys(workflows || {}),
+      ...(vendorIds.length ? { vendorIds } : {}),
     });
-    return { orderId, earnings };
+    return { orderId, vendorIds, earnings };
   } finally {
     await pool.end();
   }
@@ -209,7 +264,13 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { action?: DebugAction; productId?: string; orderId?: string; days?: number }
+    | {
+        action?: DebugAction
+        productId?: string
+        orderId?: string
+        vendorId?: string
+        days?: number
+      }
     | null;
 
   const action = body?.action;
@@ -256,14 +317,14 @@ export async function POST(req: NextRequest) {
         if (!body?.orderId) {
           return NextResponse.json({ error: "orderId required" }, { status: 400 });
         }
-        const result = await markOrderDelivered(body.orderId);
+        const result = await markOrderDelivered(body.orderId, body.vendorId || null);
         return NextResponse.json({ success: true, ...result });
       }
       case "sync-debug-delivery-ledger": {
         if (!body?.orderId) {
           return NextResponse.json({ error: "orderId required" }, { status: 400 });
         }
-        const result = await syncDebugDeliveryLedger(body.orderId);
+        const result = await syncDebugDeliveryLedger(body.orderId, body.vendorId || null);
         return NextResponse.json({ success: true, ...result });
       }
       case "force-settle-pending-order": {

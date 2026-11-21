@@ -264,17 +264,30 @@ export default function DebugControllerDashboard() {
     }
   };
 
-  const deliverOrder = async (orderId: string) => {
-    const result = await runAction("mark-order-delivered", { orderId });
+  const deliveryRowKey = (order: DebugDeliverableOrder) =>
+    `${order.id}:${order.vendorId || "root"}`;
+
+  const deliverOrder = async (order: DebugDeliverableOrder) => {
+    const result = await runAction("mark-order-delivered", {
+      orderId: order.id,
+      ...(order.vendorId ? { vendorId: order.vendorId } : {}),
+    });
     if (result) {
       setDeliveryConfirm(null);
       await loadDeliverableOrders();
-      showMessage("Order marked delivered in debug mode");
+      showMessage(
+        order.displayId
+          ? `Slice #${order.displayId} marked delivered in debug mode`
+          : "Order marked delivered in debug mode"
+      );
     }
   };
 
-  const syncDeliveryLedger = async (orderId: string) => {
-    const result = await runAction("sync-debug-delivery-ledger", { orderId });
+  const syncDeliveryLedger = async (order: DebugDeliverableOrder) => {
+    const result = await runAction("sync-debug-delivery-ledger", {
+      orderId: order.id,
+      ...(order.vendorId ? { vendorId: order.vendorId } : {}),
+    });
     if (result) {
       showMessage("Delivery ledger entry scheduled; it remains pending for the product protection window");
       await loadDeliverableOrders();
@@ -603,26 +616,40 @@ export default function DebugControllerDashboard() {
             </Button>
           </div>
           <div className="space-y-2">
-            {deliverableOrders.map((order) => (
-              <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-900/70 bg-amber-950/20 px-4 py-3">
+            {deliverableOrders.map((order) => {
+              const rowKey = deliveryRowKey(order);
+              return (
+              <div key={rowKey} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-900/70 bg-amber-950/20 px-4 py-3">
                 <div>
                   <p className="font-medium">Order #{order.displayId}</p>
-                  <p className="text-xs text-slate-400">{order.email || "No email"} · {order.stage === "in_transit" ? "In transit" : order.stage === "delivered" ? "Delivered — ledger sync available" : "Ready to dispatch"} · {order.id}</p>
+                  <p className="text-xs text-slate-400">
+                    {order.email || "No email"}
+                    {order.vendorLabel ? ` · ${order.vendorLabel}` : ""}
+                    {" · "}
+                    {order.stage === "in_transit"
+                      ? "In transit"
+                      : order.stage === "delivered"
+                        ? "Delivered — ledger sync available"
+                        : "Ready to dispatch"}
+                    {" · "}
+                    {order.id}
+                  </p>
                 </div>
                 {order.stage === "delivered" ? (
-                  <Button size="sm" variant="outline" className="border-amber-700 text-amber-300" onClick={() => void syncDeliveryLedger(order.id)}>
+                  <Button size="sm" variant="outline" className="border-amber-700 text-amber-300" onClick={() => void syncDeliveryLedger(order)}>
                     Sync ledger
                   </Button>
-                ) : deliveryConfirm === order.id ? (
+                ) : deliveryConfirm === rowKey ? (
                   <div className="flex gap-2">
-                    <Button size="sm" variant="destructive" onClick={() => void deliverOrder(order.id)}>Confirm delivered</Button>
+                    <Button size="sm" variant="destructive" onClick={() => void deliverOrder(order)}>Confirm delivered</Button>
                     <Button size="sm" variant="outline" className="border-slate-700" onClick={() => setDeliveryConfirm(null)}>Cancel</Button>
                   </div>
                 ) : (
-                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500" onClick={() => setDeliveryConfirm(order.id)}>Mark delivered</Button>
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500" onClick={() => setDeliveryConfirm(rowKey)}>Mark delivered</Button>
                 )}
               </div>
-            ))}
+              );
+            })}
             {!ordersLoading && deliverableOrders.length === 0 ? <p className="text-sm text-slate-500">Load orders to see dispatch and in-transit orders.</p> : null}
           </div>
         </section>

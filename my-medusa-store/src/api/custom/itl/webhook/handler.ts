@@ -117,21 +117,37 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
     forceDummyItlStatus(awb, transition.status, { reason })
   }
 
+  const isSelfShip = existingWf?.shipping_method === "self"
+
   const logistics = buildLogisticsStatusPatch({
     status: transition.status,
     reason,
     isCodOrder: isCod,
   })
 
-  // If COD already delivered and cash comes later, keep delivered stage
-  if (transition.status === "cash_collected" && vendorId) {
+  // If COD already delivered and cash comes later, keep delivered stage (Easy Ship only)
+  if (!isSelfShip && transition.status === "cash_collected" && vendorId) {
     const existing = getVendorWorkflow(metadata, vendorId)
     if (existing.stage === "delivered" || existing.shiprocket_status === "delivered") {
       logistics.stage = "delivered"
     }
   }
 
-  const { should_schedule_earnings, ...patch } = logistics
+  const { should_schedule_earnings: rawShouldScheduleEarnings, ...rawPatch } = logistics
+  // Self-ship: tracking-only — never auto-set stage delivered or unlock earnings from ITL
+  let patch = rawPatch
+  let should_schedule_earnings = rawShouldScheduleEarnings
+  if (isSelfShip) {
+    const {
+      stage: _dropStage,
+      shiprocket_delivered_at: _dropDeliveredAt,
+      cod_cash_collected_at: _dropCod,
+      ...selfSafe
+    } = rawPatch
+    patch = selfSafe
+    should_schedule_earnings = false
+  }
+
   const stampedPatch = {
     ...patch,
     easy_tracking_status: transition.status || null,
@@ -141,7 +157,7 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
   let nextMetadata = metadata
   if (vendorId) {
     nextMetadata = mergeVendorWorkflowMetadata(metadata, vendorId, stampedPatch)
-  } else {
+  } else if (!isSelfShip) {
     nextMetadata = {
       ...metadata,
       shiprocket_status: patch.shiprocket_status,
@@ -158,13 +174,14 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
 
   await orderModuleService.updateOrders(match.id, { metadata: nextMetadata })
   console.log(
-    `[ITL] Updated order ${match.id} status=${transition.status} vendor=${vendorId || "root"}`
+    `[ITL] Updated order ${match.id} status=${transition.status} vendor=${vendorId || "root"} self_ship=${isSelfShip}`
   )
 
   const shouldPay =
-    should_schedule_earnings ||
-    (transition.status === "cash_collected" && isCod) ||
-    (transition.status === "delivered" && !isCod)
+    !isSelfShip &&
+    (should_schedule_earnings ||
+      (transition.status === "cash_collected" && isCod) ||
+      (transition.status === "delivered" && !isCod))
 
   if (shouldPay) {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })

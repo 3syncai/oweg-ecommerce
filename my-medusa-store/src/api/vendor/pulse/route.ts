@@ -14,6 +14,10 @@ import {
   getVendorEarningsSummary,
   syncVendorEarningsStatuses,
 } from "../../../lib/vendor-earnings"
+import {
+  loadOwnedReturnRequestItems,
+  ownedReturnRequestIdSet,
+} from "../../../lib/vendor-owned-returns"
 
 function emptyPulse() {
   return {
@@ -129,7 +133,14 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const idSet = new Set(orderIds)
         requests = (all || []).filter((r: any) => r?.order_id && idSet.has(r.order_id))
       }
+      const ownedItems = await loadOwnedReturnRequestItems(
+        pool,
+        (requests || []).map((r: any) => r.id).filter(Boolean),
+        vendorProductIds
+      )
+      const ownedReturnIds = ownedReturnRequestIdSet(ownedItems)
       for (const request of requests || []) {
+        if (!request?.id || !ownedReturnIds.has(request.id)) continue
         const status = String(request?.status || "")
         if (status === "pending_approval") returnsPending += 1
         if (

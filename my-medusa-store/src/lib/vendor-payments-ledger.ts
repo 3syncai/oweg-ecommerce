@@ -403,12 +403,12 @@ export function summarizeVendorPaymentCards(
   )
   const sum = (rows: VendorPaymentSettlement[], key: keyof VendorPaymentSettlement) =>
     rows.reduce((acc, row) => acc + (Number(row[key]) || 0), 0)
-  const latestRunningBalance =
-    settlements.length > 0
-      ? settlements[settlements.length - 1].balance_amount
-      : Number(extras.available_balance) || 0
-  const totalWithdrawn = Number(extras.total_withdrawn) || 0
-  const settlementBalance = round2(latestRunningBalance + totalWithdrawn)
+  // Available = CREDITED only (DB). Pending stays in unlocking_payment until unlock.
+  const available = round2(Number(extras.available_balance) || 0)
+  const unlocking = round2(Number(extras.unlocking_balance) || 0)
+  const totalWithdrawn = round2(Number(extras.total_withdrawn) || 0)
+  // Lifetime unlocked settlement = still-available + already withdrawn.
+  const settlementBalance = round2(available + totalWithdrawn)
 
   return {
     // Catalog product sales only (A + GST A). Logistics stay on their own card.
@@ -427,9 +427,9 @@ export function summarizeVendorPaymentCards(
     platform_fee: Math.abs(sum(todaySales, "platform_fee")),
     partner_commission: Math.abs(sum(todaySales, "partner_commission")),
     settlement_balance: settlementBalance,
-    balance: latestRunningBalance,
-    pending_payment: latestRunningBalance,
-    unlocking_payment: extras.unlocking_balance,
+    balance: available,
+    pending_payment: unlocking,
+    unlocking_payment: unlocking,
     withdrawn: totalWithdrawn,
   }
 }

@@ -2,7 +2,7 @@ import { getSharedDbPool } from "../../../lib/db-pool"
 import { vendorProductSelection } from "../../../lib/vendor-product-list"
 import { loadShareProduct, sharedProductDraft, validProductShare } from "../../../lib/product-share"
 import { prepareSharedCatalogOffer } from "../../../lib/shared-catalog-offer"
-import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, publicVariantSku, withCatalogLock } from "../../../lib/catalog-identity"
+import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, withCatalogLock } from "../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
@@ -50,45 +50,30 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     )
     const query = req.scope.resolve("query")
     const productsById = new Map<string, any>()
-    // Legacy dashboard/search callers still get all products, in bounded graph reads.
+    // List UI only needs card fields — avoid images.*/options/variants graph fan-out
+    // (was taking 15–40s per request on RDS).
+    const listFields = [
+      "id",
+      "title",
+      "handle",
+      "status",
+      "thumbnail",
+      "metadata",
+      "created_at",
+      "updated_at",
+    ]
     for (let i = 0; i < selection.ids.length; i += 100) {
       const ids = selection.ids.slice(i, i + 100)
       const { data: products } = await query.graph({
         entity: "product",
-        fields: [
-          "id",
-          "title",
-          "subtitle",
-          "description",
-          "handle",
-          "status",
-          "thumbnail",
-          "images.*",
-          "metadata",
-          "created_at",
-          "updated_at",
-          "collection_id",
-          "type_id",
-          "variants.id",
-          "variants.title",
-          "variants.sku",
-          "variants.manage_inventory",
-          "options.*",
-          "tags.*",
-          "categories.id",
-        ],
+        fields: listFields,
         filters: { id: ids },
         pagination: { take: ids.length },
       })
       for (const product of products || []) {
         // Never expose a product reassigned to another vendor during hydration.
         if (product.metadata?.vendor_id !== auth.vendor_id) continue
-        productsById.set(product.id, {
-          ...product,
-          variants: (product.variants || []).map((variant: any) => ({
-            ...variant, sku: publicVariantSku(product, variant),
-          })),
-        })
+        productsById.set(product.id, product)
       }
     }
     return res.json({
