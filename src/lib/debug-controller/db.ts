@@ -48,9 +48,12 @@ function buildPool(url: string): Pool {
     connectionTimeoutMillis: 10_000,
   });
 
-  nextPool.on("error", (err) => {
-    console.error("[debug-controller-db] idle client error:", err.message);
-  });
+  // Real pg.Pool exposes .on; security-regression stubs may not.
+  if (typeof nextPool.on === "function") {
+    nextPool.on("error", (err: Error) => {
+      console.error("[debug-controller-db] idle client error:", err.message);
+    });
+  }
 
   return nextPool;
 }

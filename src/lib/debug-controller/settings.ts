@@ -27,11 +27,8 @@ function mergeSettings(
   };
 }
 
-async function readSettingsFromDb(): Promise<DebugControllerSettings> {
-  // Public reads must work in production even when the debug admin flag is off.
-  const poolOpts = { allowWithoutDebugFlag: true };
-  await ensureDebugControllerTable(poolOpts);
-  const db = getDebugControllerPool(poolOpts);
+async function readSettings(): Promise<DebugControllerSettings> {
+  const db = getDebugControllerPool();
   const query = {
     text: "SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1",
     values: [SETTINGS_KEY],
@@ -46,39 +43,36 @@ async function readSettingsFromDb(): Promise<DebugControllerSettings> {
   } catch (error) {
     // Existing deployments only need SELECT. Bootstrap on a new database.
     if ((error as { code?: unknown } | null)?.code !== "42P01") throw error;
-    await ensureDebugControllerTable(poolOpts);
+    await ensureDebugControllerTable();
     return read();
   }
 }
 
+/**
+ * Site / checkout settings.
+ * - Debug controller off → safe defaults, no DB (checkout stays open).
+ * - Debug controller on → read DB with short cache; failures throw so guards
+ *   can return a temporary 503 instead of silently opening checkout.
+ */
 export async function getDebugControllerSettings(
   options?: { bypassCache?: boolean }
 ): Promise<DebugControllerSettings> {
-  // CI / local builds without DATABASE_URL — use defaults, do not hit Postgres
-  if (!getDebugControllerDatabaseUrl()) {
+  if (!isDebugControllerEnabled()) return mergeSettings(null);
+  if (!getDebugControllerDatabaseUrl() && process.env.NODE_ENV !== "production") {
     return mergeSettings(null);
   }
-
-  if (options?.bypassCache) {
-    try {
-      return await readSettingsFromDb();
-    } catch (error) {
-      console.error("[debug-controller/settings] bypass read failed, using defaults:", error);
-      return mergeSettings(null);
-    }
-  }
+  if (options?.bypassCache) return readSettings();
 
   const now = Date.now();
   if (cachedSettings && now < cacheExpiresAt) return cachedSettings;
   if (pendingRead) return pendingRead;
-  if (now < retryAt && cachedSettings) return cachedSettings;
+  if (now < retryAt) throw new Error("Site settings temporarily unavailable");
 
-  const read = readSettingsFromDb()
+  const read = readSettings()
     .then((settings) => {
       if (pendingRead === read) {
         cachedSettings = settings;
         cacheExpiresAt = Date.now() + CACHE_TTL_MS;
-        retryAt = 0;
       }
       return settings;
     })
@@ -88,12 +82,7 @@ export async function getDebugControllerSettings(
       console.error("[site-settings] Database read failed", {
         code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "unknown",
       });
-      // Storefront must stay up — serve last good cache or defaults.
-      if (cachedSettings) return cachedSettings;
-      const defaults = mergeSettings(null);
-      cachedSettings = defaults;
-      cacheExpiresAt = Date.now() + Math.min(CACHE_TTL_MS, 15_000);
-      return defaults;
+      throw error;
     })
     .finally(() => {
       if (pendingRead === read) pendingRead = null;
@@ -105,9 +94,6 @@ export async function getDebugControllerSettings(
 export async function updateDebugControllerSettings(
   patch: Partial<DebugControllerSettings>
 ): Promise<DebugControllerSettings> {
-  if (!isDebugControllerEnabled()) {
-    throw new Error("Debug controller is disabled (set ENABLE_DEBUG_CONTROLLER=true)");
-  }
   const current = await getDebugControllerSettings({ bypassCache: true });
   const next = mergeSettings({ ...current, ...patch });
 
