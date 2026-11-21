@@ -29,11 +29,12 @@ function mergeSettings(
 
 async function readSettings(): Promise<DebugControllerSettings> {
   const db = getDebugControllerPool();
+  // query_timeout is supported by node-postgres at runtime; @types/pg omits it.
   const query = {
     text: "SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1",
     values: [SETTINGS_KEY],
     query_timeout: 3000,
-  };
+  } as { text: string; values: string[] };
   const read = async () => {
     const result = await db.query<{ value: Partial<DebugControllerSettings> }>(query);
     return mergeSettings(result.rows[0]?.value);

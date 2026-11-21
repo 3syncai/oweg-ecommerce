@@ -84,6 +84,7 @@ export async function ensureDebugControllerTable(
   if (!tableReady) {
     tableReady = (async () => {
       const db = getDebugControllerPool(options);
+      // query_timeout is supported by node-postgres at runtime; @types/pg omits it.
       await db.query({
         text: `
         CREATE TABLE IF NOT EXISTS debug_controller_settings (
@@ -93,7 +94,7 @@ export async function ensureDebugControllerTable(
         )
       `,
         query_timeout: 3000,
-      });
+      } as { text: string });
     })().catch((error) => {
       tableReady = null;
       throw error;
