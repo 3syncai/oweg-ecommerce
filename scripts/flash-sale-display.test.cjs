@@ -127,6 +127,7 @@ test('migration adds an optional field without rewriting or deleting existing sa
 test('admin save forwards its validated title without changing prices or variants', async () => {
   let saved
   const route=load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
+    '../../../lib/simple-rate-limit':{checkRateLimit:()=>({allowed:true})},
     '@medusajs/framework/utils':{Modules:{PRODUCT:'product'}},pg:{Client:class{}},
     '../../../modules/flash-sale/service':{},'../../../modules/flash-sale':{FLASH_SALE_MODULE:'flash'},
     '../../../lib/flash-sale-title':titleRules,
@@ -156,6 +157,7 @@ test('publication validates the complete batch against seller prices before savi
   let saved
   const service = {getAllFlashSaleItems:async()=>[],createFlashSaleItemsBatch:async items=>{saved=items;return items}}
   const route = load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
+    '../../../lib/simple-rate-limit':{checkRateLimit:()=>({allowed:true})},
     '@medusajs/framework/utils':{Modules:{}},'../../../modules/flash-sale':{FLASH_SALE_MODULE:'flash'},
     '../../../lib/flash-sale-title':titleRules,'../../../lib/flash-sale-eligibility':rules,
   })
@@ -239,8 +241,9 @@ test('CDN freshness cannot outlast the featured window or sale expiry', () => {
 })
 
 test('batch publish returns every invalid row and writes only after all are corrected', async () => {
+  let allowed=true;
   const route = load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
-    '@medusajs/framework/utils':{}, '../../../modules/flash-sale':{},
+    '@medusajs/framework/utils':{}, '../../../modules/flash-sale':{}, '../../../lib/simple-rate-limit':{checkRateLimit:()=>({allowed,retryAfterSec:5})},
     '../../../lib/flash-sale-title':{normalizeFlashSaleTitle:()=>null},
     '../../../lib/flash-sale-eligibility':{assessFlashSales:async rows=>rows.map(row=>({...row,
       regular:100, seller:row.variant_id, reason:row.flash_sale_price>=100?'Reduce the price.':''}))}
@@ -248,10 +251,11 @@ test('batch publish returns every invalid row and writes only after all are corr
   let writes=0;
   const service={getAllFlashSaleItems:async()=>[],createFlashSaleItemsBatch:async rows=>{writes++;return rows}};
   const items=[99,105,100].map((price,i)=>({variant_id:'v'+i,product_id:'p'+i,flash_sale_price:price,expires_at:'2099-01-01'}));
-  const req={body:{items},scope:{resolve:()=>service}};
-  const res={status(n){this.code=n;return this},json(body){return body}};
+  const req={auth_context:{actor_id:"admin"},body:{items},scope:{resolve:()=>service}};
+  const res={set(k,v){this[k]=v;return this},status(n){this.code=n;return this},json(body){return body}};
   const rejected=await route.POST(req,res);
   assert.equal(res.code,400);assert.equal(writes,0);assert.deepEqual(Array.from(rejected.issues,i=>i.variant_id),['v1','v2']);
   items[1].flash_sale_price=90;items[2].flash_sale_price=80;
   assert.equal((await route.POST(req,res)).flash_sale_items.length,3);assert.equal(writes,1);
+  allowed=false;await route.POST(req,res);assert.equal(res.code,429);assert.equal(res["Retry-After"],"5");assert.equal(writes,1);
 });

@@ -1,5 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
+import { checkRateLimit } from "../../../lib/simple-rate-limit"
 import { assessFlashSales } from "../../../lib/flash-sale-eligibility"
 import FlashSaleModuleService from "../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../modules/flash-sale"
@@ -112,6 +113,11 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     const flashSaleService: FlashSaleModuleService = req.scope.resolve(FLASH_SALE_MODULE)
+    const actor = (req as MedusaRequest & { auth_context?: {actor_id?: string} }).auth_context?.actor_id
+    if (actor) {
+      const limit = checkRateLimit({key:"flash-sale-publish:"+actor,limit:30,windowMs:60000})
+      if (!limit.allowed) return res.set("Retry-After",String(limit.retryAfterSec)).status(429).json({message:"Too many publish attempts. Try again shortly."})
+    }
     const { items, title: requestedTitle } = req.body as any
     let title: string | null
     try { title = normalizeFlashSaleTitle(requestedTitle) }

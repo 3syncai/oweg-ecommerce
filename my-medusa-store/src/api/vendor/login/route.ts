@@ -38,7 +38,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
   }
 
-  await recordVendorActivity(req, user.id, true)
+  res.once("finish", () => { void recordVendorActivity(req, user.id, true) })
   return res.json({
     token,
     vendor_user: {

@@ -41,7 +41,9 @@ test('verified login, foreground navigation and writes update only the authentic
       await assert.rejects(route.POST(req,{json:x=>x}),/invalid/);
       assert.equal((await accounts())[index].login_at,null);
       auth.authenticateVendorUser=async()=>user;
-      await route.POST(req,{json:x=>x});
+      const loginResponse = new EventEmitter();
+      loginResponse.json = x => { loginResponse.emit('finish'); return x };
+      await route.POST(req,loginResponse);
     }
     const first=(await accounts())[0];
     assert.equal(first.login_ip,'192.0.2.11');

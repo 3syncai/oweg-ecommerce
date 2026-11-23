@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { checkRateLimit } from "../../../../lib/simple-rate-limit"
 import { Modules } from "@medusajs/framework/utils"
 
 import { requireApprovedVendor } from "../../_lib/guards"
@@ -16,6 +17,9 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
         const vendorId = auth.vendor_id
 
+        const actor = (req as MedusaRequest & {vendor_auth?:{sub:string}}).vendor_auth?.sub || vendorId
+        const limit = checkRateLimit({key:"vendor-stock-update:"+actor,limit:120,windowMs:60000})
+        if (!limit.allowed) return res.set("Retry-After",String(limit.retryAfterSec)).status(429).json({success:false,message:"Too many stock updates. Try again shortly."})
         const body = (req as any).body || {}
         const { variant_id, quantity } = body
 
