@@ -19,15 +19,15 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
         const body = (req as any).body || {}
         const { variant_id, quantity } = body
 
-        if (!variant_id || typeof quantity !== 'number' || Number.isNaN(quantity)) {
+        if (!variant_id || typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 0) {
             return res.status(400).json({
                 success: false,
-                message: "variant_id and quantity are required"
+                message: "Choose a variant and enter a non-negative whole stock quantity."
             })
         }
 
         // Stock quantity must never go below zero
-        const safeQuantity = Math.max(0, Math.floor(quantity))
+        const safeQuantity = quantity
 
         console.log(`📦 Updating inventory for variant ${variant_id} to ${safeQuantity}`)
 
