@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from 'next/image';
@@ -453,6 +453,8 @@ type HomeFeedPayload = {
   meta?: { categoriesTried: number; categoriesWithProducts: number; totalProducts: number };
 };
 
+const subscribeToHydration = () => () => {};
+
 export default function HomePage({
   initialFeed,
   sectionsOnly = false,
@@ -462,6 +464,10 @@ export default function HomePage({
 }) {
   const { customer } = useAuth();
   const { pincode, choosePincode } = useDeliveryLocation();
+  // The location provider can restore storage before this streamed section hydrates.
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const showPincodePrompt = !hydrated || !pincode;
+  const showSignInPrompt = !hydrated || !customer;
   const [placeLoading, setPlaceLoading] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
@@ -663,10 +669,10 @@ export default function HomePage({
           </div>
         </section>
 
-        {(!pincode || !customer) && (
+        {(showPincodePrompt || showSignInPrompt) && (
           <section className="oweg-section-tight">
             <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
-              {!pincode ? (
+              {showPincodePrompt ? (
                 <div className={`oweg-surface-card p-4 sm:p-5 ${styles.deliveryCard}`}>
                   <p className="text-sm font-semibold text-[var(--oweg-ink)]">
                     Share your pincode for faster delivery by local sellers
@@ -699,7 +705,7 @@ export default function HomePage({
                 </div>
               ) : null}
 
-              {!customer && (
+              {showSignInPrompt && (
                 <div className="oweg-surface-card flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--oweg-green)] text-white">
                     <UserRound className="h-6 w-6" />

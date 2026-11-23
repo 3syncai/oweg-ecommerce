@@ -17,26 +17,28 @@ test('route hydrates only selected IDs, preserves order/SKUs and skips empty pag
   let graphCalls = 0;
   let selected = ['p2', 'p1', 'reassigned'];
   const counts = { total: 1001, published: 2, draft: 36, pending: 963 };
+  const identity = load('my-medusa-store/src/lib/catalog-identity.ts');
   const route = load('my-medusa-store/src/api/vendor/products/route.ts', name => {
     if (name.endsWith('vendor-product-list')) return { vendorProductSelection: async () => ({ ids: selected, count: 1001, counts }) };
     if (name.endsWith('vendor-pagination')) return pagination;
     if (name.endsWith('db-pool')) return { getSharedDbPool: () => ({}) };
     if (name.endsWith('/guards')) return { requireApprovedVendor: async req => req.allowed ? { vendor_id: 'v1' } : null };
-    if (name.endsWith('catalog-identity')) return { publicVariantSku: (_, v) => v.sku.replace('internal_', '') };
+    if (name.endsWith('catalog-identity')) return identity;
     return {};
   });
   const graph = async options => {
     graphCalls++;
     assert.deepEqual(Array.from(options.filters.id), selected);
     assert.equal(options.pagination.take, selected.length);
-    return { data: ['p1', 'reassigned', 'p2'].map(id => ({ id, metadata: { vendor_id: id === 'reassigned' ? 'v2' : 'v1' }, variants: [{ sku: 'internal_public' }] })) };
+    assert.ok(options.fields.includes('variants.sku'));
+    return { data: ['p1', 'reassigned', 'p2'].map(id => ({ id, metadata: { vendor_id: id === 'reassigned' ? 'v2' : 'v1', catalog_skus: { 'OWEG-OFFER-qa': 'public' } }, variants: [{ sku: 'OWEG-OFFER-qa' }, { sku: 'LEGACY-2' }, { sku: 'OWEG-OFFER-unmapped' }] })) };
   };
   let body;
   const res = { setHeader() {}, json(value) { body = value; } };
   const req = { allowed: true, query: { limit: '20', offset: '20' }, scope: { resolve: () => ({ graph }) } };
   await route.GET(req, res);
   assert.deepEqual(Array.from(body.products, p => p.id), ['p2', 'p1']);
-  assert.equal(body.products[0].variants[0].sku, 'public');
+  assert.deepEqual(Array.from(body.products[0].variants, v => v.sku), ['public', 'LEGACY-2', '']);
   assert.equal(body.count, 1001); assert.equal(body.offset, 20); assert.equal(body.counts.pending, 963);
   selected = [];
   await route.GET(req, res);

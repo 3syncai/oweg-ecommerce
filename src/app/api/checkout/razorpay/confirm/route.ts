@@ -229,7 +229,10 @@ export async function POST(req: Request) {
 
     // FORCE RESERVATIONS AND SHIPPING METHOD
     console.log("razorpay confirm: Ensuring order readiness...");
-    await ensurePlacedOrderFulfillmentReady(finalOrderId);
+    const readiness = await ensurePlacedOrderFulfillmentReady(finalOrderId);
+    if (!readiness.reservations.success) {
+      await updateOrderMetadata(finalOrderId, { checkout_stock_pending: true });
+    }
 
     // Create payment records + sync Medusa admin "Captured" status
     let paymentCreated = false;

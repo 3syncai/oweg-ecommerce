@@ -37,12 +37,12 @@ const readFeaturedDeals = unstable_cache(async (_bucket: number) => {
           images: (product.images as Array<{ url: string }> | undefined)?.slice(0, 1),
           variants: variants?.map(({ id }) => ({ id })), variant_id: product.variant_id,
           flash_sale_price: product.flash_sale_price, original_price: product.original_price,
-          display_pricing: product.display_pricing,
+          seller: product.seller,
           metadata: metadata ? { price: metadata.price, mrp: metadata.mrp } : undefined,
         }
       }),
   }
-}, ['featured-deals-v1'], { revalidate: 15 })
+}, ['featured-deals-v2'], { revalidate: 15 })
 
 const featuredPending = new Map<number, Promise<FlashSalePayload>>()
 const validating = new Map<boolean, Promise<FlashSalePayload>>()

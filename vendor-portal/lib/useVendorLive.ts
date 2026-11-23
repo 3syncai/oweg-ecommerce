@@ -33,16 +33,36 @@ let sharedCleanup: (() => void) | null = null
 let sharedRequest: Promise<void> | null = null
 let forceDuringRequest = false
 
+function sessionVersion() {
+  return document.cookie?.split("; ").find(cookie => cookie.startsWith("vendor_session_version=")) ?? ""
+}
+
+let pollerGeneration = 0
+let pollerSession = ""
+let switchingSession = false
+
+function sessionIsCurrent() {
+  if (pollerSession === sessionVersion()) return true
+  if (!switchingSession) {
+    switchingSession = true
+    clearPageCache()
+    window.location.reload()
+  }
+  return false
+}
+
 async function sharedTick(forceInvalidate = false) {
   if (typeof window === "undefined") return
-  if (!sharedListeners.size) return
+  if (!sharedListeners.size || !sessionIsCurrent()) return
   // Session is HttpOnly cookie — pulse goes through same-origin proxy with credentials.
   if (document.visibilityState === "hidden" && !forceInvalidate) return
   forceDuringRequest ||= forceInvalidate
   if (sharedRequest) return sharedRequest
+  const generation = pollerGeneration
   sharedRequest = (async () => {
     try {
       const pulse = await vendorPulseApi.get()
+      if (generation !== pollerGeneration || !sessionIsCurrent()) return
       const revision = String(pulse.revision || "")
       const changed =
         forceDuringRequest ||
@@ -59,7 +79,7 @@ async function sharedTick(forceInvalidate = false) {
     } catch {
       // Keep last known state
     } finally {
-      sharedRequest = null
+      if (generation === pollerGeneration) sharedRequest = null
     }
   })()
   return sharedRequest
@@ -78,6 +98,8 @@ function queueSharedTick(forceInvalidate = false) {
 function ensureSharedPoller(intervalMs: number) {
   if (sharedBootstrapped) return
   sharedBootstrapped = true
+  pollerSession = sessionVersion()
+  switchingSession = false
 
   const schedule = () => {
     if (sharedTimer != null) window.clearInterval(sharedTimer)
@@ -114,6 +136,8 @@ function ensureSharedPoller(intervalMs: number) {
     window.removeEventListener("focus", onFocusOrLocal)
     window.removeEventListener(VENDOR_DATA_CHANGED, onFocusOrLocal)
     window.removeEventListener(VENDOR_ORDERS_CHANGED, onFocusOrLocal)
+    pollerGeneration++
+    sharedRequest = null
     sharedBootstrapped = false
     sharedRevision = null
     forceDuringRequest = false

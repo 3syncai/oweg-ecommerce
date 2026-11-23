@@ -6,7 +6,7 @@ const ts = require('typescript');
 function load(file) {
   const module = { exports: {} };
   const js = ts.transpileModule(fs.readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
-  vm.runInNewContext(js, { module, exports: module.exports });
+  vm.runInNewContext(js, { module, exports: module.exports, require:name=>{ if(name.endsWith("/storefront-shipping")) return load("my-medusa-store/src/lib/storefront-shipping.ts"); throw Error(name) } });
   return module.exports;
 }
 const rules = load('src/lib/shipping-rules.ts');

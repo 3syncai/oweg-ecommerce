@@ -147,6 +147,7 @@ export async function recordCaptureAtomically(pool: Pool, input: CaptureInput) {
       pending_difference: pending, raw_pending_difference: { value: String(pending), precision: 20 }
     }), input.orderId]);
     await client.query('UPDATE "order" SET metadata=COALESCE(metadata,\'{}\'::jsonb)||$2::jsonb,updated_at=now() WHERE id=$1', [input.orderId, JSON.stringify({
+      ...(!existingPayment && metadata.checkout_stock_secured !== true ? { checkout_stock_pending: true } : {}),
       payment_method: "razorpay", checkout_status: "paid", razorpay_payment_status: "captured",
       checkout_tombstone: false, checkout_failed_at: null,
       razorpay_payment_id: input.razorpayPaymentId, razorpay_order_id: input.razorpayOrderId,

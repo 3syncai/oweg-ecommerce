@@ -23,6 +23,7 @@ import { useVendorLive } from "@/lib/useVendorLive"
 import { warmReturnsCache } from "@/lib/warm-returns-cache"
 
 type VendorInfo = {
+  id?: string
   name?: string
   email?: string
   store_name?: string | null
@@ -127,6 +128,25 @@ const VendorShellInner = ({ children }: PropsWithChildren) => {
   const platformLogo = isDark ? OWEG_BRAND.logoPathDark : OWEG_BRAND.logoPathLight
   const [vendorInfo, setVendorInfo] = useState<VendorInfo | null>(null)
   const [, setPayoutData] = useState<PayoutData>({ totalRevenue: 0, totalBalance: 0, loading: true })
+  const accountId = vendorInfo?.id
+  useEffect(() => {
+    if (!accountId) return
+    let lastSent = 0
+    const report = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastSent < 5000) return
+      lastSent = Date.now()
+      void fetch("/api/medusa/vendor/activity", { method: "POST", cache: "no-store" }).catch(() => {})
+    }
+    report()
+    window.addEventListener("pointerdown", report, { passive: true })
+    window.addEventListener("keydown", report)
+    window.addEventListener("online", report)
+    return () => {
+      window.removeEventListener("pointerdown", report)
+      window.removeEventListener("keydown", report)
+      window.removeEventListener("online", report)
+    }
+  }, [pathname, accountId])
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>([])

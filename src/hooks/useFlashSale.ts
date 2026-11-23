@@ -5,6 +5,7 @@ import axios from 'axios'
 
 export type FlashSaleInfo = {
   title?: string
+  variant_id?: string
   active: boolean
   flash_sale_price?: number
   original_price?: number

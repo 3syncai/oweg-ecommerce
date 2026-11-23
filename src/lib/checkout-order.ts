@@ -307,7 +307,7 @@ export async function markCheckoutPaymentFailed(
       const { getSuccessfulRazorpayPaymentForOrder, recoverRazorpayCapture } = await import(
         "@/lib/razorpay-capture-recover"
       );
-      const successPay = await getSuccessfulRazorpayPaymentForOrder(razorpayOrderId);
+      const successPay = await getSuccessfulRazorpayPaymentForOrder(razorpayOrderId, true);
       if (successPay?.id) {
         if (successPay.status === "authorized") return { ok: true, recovered: true, orderId };
         const recovered = await recoverRazorpayCapture({
@@ -320,11 +320,11 @@ export async function markCheckoutPaymentFailed(
         if (recovered.ok) {
           return { ok: true, recovered: true, orderId: recovered.orderId };
         }
-        console.warn("markCheckoutPaymentFailed: capture gate recover failed", recovered);
-        // Fall through to tombstone — do not delete while recovery is ambiguous.
+        throw new Error("capture_recovery_pending");
       }
     } catch (err) {
       console.warn("markCheckoutPaymentFailed: Razorpay gate check failed", err);
+      throw new Error("payment_status_pending");
     }
   }
 

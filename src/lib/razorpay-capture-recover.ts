@@ -84,7 +84,8 @@ export async function findOrderIdByRazorpayPaymentId(
 }
 
 export async function getSuccessfulRazorpayPaymentForOrder(
-  razorpayOrderId: string
+  razorpayOrderId: string,
+  requireGatewayResponse = false
 ): Promise<(RazorpayPaymentEntity & { notes?: Record<string, string> }) | null> {
   if (!razorpayOrderId) return null;
   try {
@@ -92,7 +93,8 @@ export async function getSuccessfulRazorpayPaymentForOrder(
     const hit = items.find((p) => isRazorpayPaymentSuccessful(p.status));
     return hit || null;
   } catch (err) {
-    console.warn("getSuccessfulRazorpayPaymentForOrder failed", razorpayOrderId, err);
+    if (requireGatewayResponse) throw err;
+      console.warn("getSuccessfulRazorpayPaymentForOrder failed", razorpayOrderId, err);
     return null;
   }
 }

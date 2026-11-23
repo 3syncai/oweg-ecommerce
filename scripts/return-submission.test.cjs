@@ -9,7 +9,7 @@ const ts = require('typescript');
 function load(file, mocks = {}, globals = {}) {
   const filename = path.resolve(file), module = { exports: {} }, local = createRequire(filename);
   const js = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: {
-    target: ts.ScriptTarget.ES2021, module: ts.ModuleKind.CommonJS, esModuleInterop: true,
+    target: ts.ScriptTarget.ES2021, module: ts.ModuleKind.CommonJS, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX,
   } }).outputText;
   vm.runInNewContext(js, { module, exports: module.exports, Date, Map, Set, console: { log() {}, error() {} },
     process: { env: {} }, require: key => key in mocks ? mocks[key] : local(key), ...globals }, { filename });
@@ -121,9 +121,19 @@ test('old rewards order URLs redirect to the implemented account detail route', 
   const route = load('src/app/order/details/[id]/page.tsx', { 'next/navigation': { redirect: url => { target = url; } } });
   await route.default({ params: Promise.resolve({ id: 'order_test' }) });
   assert.equal(target, '/account/orders/order_test');
-  const rewards = fs.readFileSync('src/app/my-reward/page.tsx', 'utf8');
-  assert.match(rewards, /\/account\/orders\/\$\{encodeURIComponent\(tx.order_id\)\}/);
-  assert.doesNotMatch(rewards, /\/order\/details\//);
+  const React = require('react');
+  const wallet = { balance: 1, pending_coins: 0, locked_coins: 0, lifetime_earned: 1, lifetime_spent: 0,
+    transactions: [{ id: 'qa', order_id: 'order /1', created_at: '2026-01-01', amount: 1 }] };
+  const page = load('src/app/my-reward/page.tsx', {
+    'lucide-react': { Wallet: () => null, History: () => null, Clock: () => null, ArrowRight: () => null },
+    react: { ...React, useState: initial => React.useState(initial === null ? wallet : initial) },
+    'next/image': () => null, 'next/link': ({ href, children }) => React.createElement('a', { href }, children),
+    '@/contexts/AuthProvider': { useAuth: () => ({ customer: { id: 'qa' }, initializing: false }) },
+    '@/components/ui/BrandLoader': () => null,
+  });
+  const html = require('react-dom/server').renderToStaticMarkup(React.createElement(page.default));
+  assert.ok(html.includes('<a href="/account/orders/order%20%2F1">View order</a>'));
+  assert.ok(!html.includes('href="/order/details/'));
 });
 
 function customerForm() {

@@ -2,7 +2,7 @@ import { getSharedDbPool } from "../../../lib/db-pool"
 import { vendorProductSelection } from "../../../lib/vendor-product-list"
 import { loadShareProduct, sharedProductDraft, validProductShare } from "../../../lib/product-share"
 import { prepareSharedCatalogOffer } from "../../../lib/shared-catalog-offer"
-import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, withCatalogLock } from "../../../lib/catalog-identity"
+import { CatalogConflict, cleanVendorMetadata, prepareCatalogOffer, publicVariantSku, withCatalogLock } from "../../../lib/catalog-identity"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules, ProductStatus, ContainerRegistrationKeys } from "@medusajs/framework/utils"
@@ -58,6 +58,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       "handle",
       "status",
       "thumbnail",
+      "variants.id",
+      "variants.sku",
       "metadata",
       "created_at",
       "updated_at",
@@ -73,7 +75,10 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
       for (const product of products || []) {
         // Never expose a product reassigned to another vendor during hydration.
         if (product.metadata?.vendor_id !== auth.vendor_id) continue
-        productsById.set(product.id, product)
+        productsById.set(product.id, {
+          ...product,
+          variants: (product.variants ?? []).map(variant => ({ ...variant, sku: publicVariantSku(product, variant) })),
+        })
       }
     }
     return res.json({

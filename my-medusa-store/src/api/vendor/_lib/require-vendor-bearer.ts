@@ -3,6 +3,7 @@ import type {
   MedusaRequest,
   MedusaResponse,
 } from "@medusajs/framework/http"
+import { recordVendorActivity } from "../../../lib/vendor-user-activity"
 import { verifyVendorToken } from "./token"
 
 const PUBLIC_PREFIXES = [
@@ -46,6 +47,11 @@ export async function requireVendorBearerMiddleware(
     return res.status(401).json({ message: "Invalid token" })
   }
 
+  if (["POST","PUT","PATCH","DELETE"].includes(req.method)) {
+    res.once("finish", () => {
+      if (res.statusCode < 400) void recordVendorActivity(req, claims.sub)
+    })
+  }
   ;(req as any).vendor_auth = claims
   return next()
 }

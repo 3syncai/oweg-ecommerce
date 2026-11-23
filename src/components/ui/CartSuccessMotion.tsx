@@ -46,7 +46,7 @@ function Flight({ source, failed, done }: FlightState) {
     let target = visibleCart();
     if (!node || !picture || !target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { done(); return; }
     let disposed = false;
-    let dirty = true;
+    let dirty = false;
     let end = target.getBoundingClientRect();
     const from = source.element?.isConnected ? source.element.getBoundingClientRect() : source.from;
     const { left, top, width, height } = from;
@@ -54,8 +54,8 @@ function Flight({ source, failed, done }: FlightState) {
     const startY = top + height / 2;
     const right = end.left + end.width / 2 >= startX;
     const down = end.top + end.height / 2 >= startY;
-    const originX = right ? width : 0;
-    const originY = down ? height : 0;
+    const originX = width / 2;
+    const originY = height / 2;
     const restore = detach(source.element);
     const progress = { value: 0 };
     const updateTarget = () => { dirty = true; };
@@ -65,16 +65,18 @@ function Flight({ source, failed, done }: FlightState) {
       end = target!.getBoundingClientRect();
       dirty = false;
     };
+    // Keep layout reads off the frame path unless the destination moved.
     const travel = () => {
       readTarget();
       const p = progress.value;
-      const dx = end.left + end.width / 2 - (left + originX + (width / 2 - originX) * .02);
-      const dy = end.top + end.height / 2 - (top + originY + (height / 2 - originY) * .02);
-      gsap.set(node, { x: dx * p, y: dy * p - Math.sin(Math.PI * p) * Math.min(60, Math.abs(dy) * .15), force3D: true });
+      const dx = end.left + end.width / 2 - startX;
+      const dy = end.top + end.height / 2 - startY;
+      const lift = Math.sin(Math.PI * p) * Math.min(64, Math.hypot(dx, dy) * .16);
+      node.style.transform = `translate3d(${dx * p}px, ${dy * p - lift}px, 0)`;
     };
     const context = gsap.context(() => {
       gsap.set(node, { left, top, width, height, force3D: true });
-      gsap.set(picture, { transformOrigin: `${originX}px ${originY}px`, force3D: true });
+      gsap.set(picture, { transformOrigin: `${originX}px ${originY}px`, transformPerspective: 700, force3D: true });
     });
     const finish = () => { if (!disposed) { restoreOnce(); done(); } };
     let restored = false;
@@ -82,15 +84,13 @@ function Flight({ source, failed, done }: FlightState) {
     const timeline = gsap.timeline({ onComplete: finish });
     const phase = (name: string) => { node.dataset.phase = name; };
     timeline.call(() => phase("detach"), [], 0)
-      .to(picture, { scaleX: 1.04, scaleY: .94, rotation: right ? -3 : 3, duration: .12, ease: "power1.out" }, 0)
-      .call(() => phase("diamond"), [], .12)
-      .to(picture, { clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)", scaleX: 1.12, scaleY: .24, skewX: right ? -20 : 20, rotation: right ? -18 : 18, duration: .21, ease: "power2.inOut" }, .12)
-      .call(() => phase("compress"), [], .33)
-      .to(picture, { scaleX: .22, scaleY: .09, skewX: 0, rotation: 0, duration: .13, ease: "power2.in" }, .33)
-      .call(() => phase("shoot"), [], .46)
-      .to(progress, { value: 1, duration: .44, ease: "power1.inOut", onUpdate: travel }, .46)
-      .to(picture, { scaleX: .02, scaleY: .02, duration: .44, ease: "power2.in" }, .46)
-      .to(picture, { opacity: 0, duration: .14, ease: "power2.in" }, .76);
+      .to(picture, { scale: 1.025, z: 12, rotationX: down ? -7 : 7, duration: .12, ease: "power1.out" }, 0)
+      .call(() => phase("bank"), [], .12)
+      .to(picture, { scale: .82, z: 24, rotationY: right ? 24 : -24, rotationZ: right ? -7 : 7, duration: .18, ease: "power2.out" }, .12)
+      .call(() => phase("shoot"), [], .30)
+      .to(progress, { value: 1, duration: .50, ease: "power1.inOut", onUpdate: travel }, .30)
+      .to(picture, { scale: .04, z: -32, rotationX: 0, rotationY: 0, rotationZ: 0, duration: .50, ease: "power1.inOut" }, .30)
+      .to(picture, { opacity: 0, duration: .10, ease: "power1.in" }, .70);
     window.addEventListener("scroll", updateTarget, { passive: true, capture: true });
     window.addEventListener("resize", updateTarget, { passive: true });
     window.visualViewport?.addEventListener("resize", updateTarget);
@@ -115,7 +115,7 @@ function Flight({ source, failed, done }: FlightState) {
   return <div ref={wrapper} data-cart-flight style={{ position: "absolute", left: source.from.left, top: source.from.top, width: source.from.width, height: source.from.height, willChange: "transform", contain: "layout style" }}>
     {/* Decorative clone: no focus, hit testing or new layout space. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img ref={image} src={source.src} alt="" aria-hidden="true" style={{ width: "100%", height: "100%", objectFit: "contain", willChange: "transform, opacity", clipPath: "polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)" }} />
+    <img ref={image} src={source.src} alt="" aria-hidden="true" style={{ width: "100%", height: "100%", objectFit: "contain", willChange: "transform, opacity" }} />
   </div>;
 }
 export default function CartSuccessMotion() {

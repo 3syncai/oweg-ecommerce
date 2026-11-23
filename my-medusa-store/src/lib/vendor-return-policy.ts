@@ -135,9 +135,12 @@ export async function resolveReturnPolicyForProduct(
   pool: Pool,
   categoryIds: string[]
 ): Promise<EffectiveReturnPolicy> {
-  const fallback = { return_window_days: 7, replacement_window_days: 7 }
-  if (!categoryIds.length) return fallback
-  await ensureCategoryReturnPolicyTable(pool)
+  if (categoryIds.length) await ensureCategoryReturnPolicyTable(pool)
+  return (await configuredReturnPolicyForProduct(pool, categoryIds)) ?? { return_window_days: 7, replacement_window_days: 7 }
+}
+
+export async function configuredReturnPolicyForProduct(pool: Pick<Pool, "query">, categoryIds: string[]): Promise<EffectiveReturnPolicy | null> {
+  if (!categoryIds.length) return null
 
   const result = await pool.query<{
     id: string
@@ -185,7 +188,7 @@ export async function resolveReturnPolicyForProduct(
       current = current.parent_category_id ? categories.get(current.parent_category_id) : undefined
     }
   }
-  return fallback
+  return null
 }
 
 export async function resolveHoldDaysForProduct(

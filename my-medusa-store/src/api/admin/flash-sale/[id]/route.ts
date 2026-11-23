@@ -2,6 +2,8 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import FlashSaleModuleService from "../../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../../modules/flash-sale"
 
+import { assessFlashSales } from "../../../../lib/flash-sale-eligibility"
+
 export const PUT = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     const { id } = req.params
@@ -61,11 +63,16 @@ export const PUT = async (req: MedusaRequest, res: MedusaResponse) => {
       })
     }
     
+    const previous = await flashSaleService.retrieveFlashSaleItem(id)
+    const campaigns = (await flashSaleService.getAllFlashSaleItems()).filter(item => item.id !== id && +new Date(item.expires_at) > Date.now())
+    const [offer] = await assessFlashSales([{ product_id, variant_id: variant_id ?? previous.variant_id,
+      flash_sale_price: flash_sale_price ?? previous.flash_sale_price }], campaigns)
+    if (offer.reason) return res.status(400).json({ message: offer.reason })
     const updatedItem = await flashSaleService.updateFlashSaleItem(id, {
       product_id,
       variant_id,
       flash_sale_price,
-      original_price,
+      original_price: offer.regular,
       expires_at,
     })
     

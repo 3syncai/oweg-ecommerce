@@ -62,25 +62,29 @@ test('expired sales are hidden and CDN lifetime never extends past a known expir
 test('flash-sale route keeps stock filtering, shares fetches and never forwards private credentials', async () => {
   let calls = 0, filtered = 0
   const helpers = load('src/lib/flash-sale-cache.ts')
-  const route = load('src/app/api/medusa/flash-sale/products/route.ts', {
-    'next/server': { NextResponse: { json: (data, options) => ({ data, ...options }) } },
+  const server = load('src/lib/flash-sale-server.ts', {
+    'next/cache': {unstable_cache: fn => fn},
     '@/lib/flash-sale-cache': helpers,
     '@/lib/home-flash-sale': { inStockHomeFlashSale: async data => { filtered++; return { ...data, products: [{ id: 'stocked' }] } } },
     axios: { get: async (_, options) => {
       calls++
       assert.equal(options.headers.authorization, undefined)
       assert.equal(options.headers.cookie, undefined)
-      assert.equal(options.timeout, 15000)
+      assert.equal(options.timeout, 5000)
       await flush()
       return { data: { active: true, products: [{ id: 'out-of-stock' }, { id: 'stocked' }] } }
     } },
   }, { process: { env: { MEDUSA_BACKEND_URL: 'https://backend.example' } } })
+  const route = load('src/app/api/medusa/flash-sale/products/route.ts', {
+    'next/server': { NextResponse: { json: (data, options) => ({ data, ...options }) } },
+    '@/lib/flash-sale-cache': helpers, '@/lib/flash-sale-server': server,
+  })
   const results = await Promise.all(Array.from({ length: 20 }, () => route.GET({ nextUrl: new URL('https://shop.example/api/medusa/flash-sale/products?in_stock=1') })))
-  assert.equal(calls, 1); assert.equal(filtered, 20)
+  assert.equal(calls, 1); assert.equal(filtered, 1)
   for (const result of results) {
     assert.equal(result.data.products.length, 1)
     assert.equal(result.data.products[0].id, 'stocked')
-    assert.match(result.headers['Cache-Control'], /s-maxage=15/)
+    assert.match(result.headers['Cache-Control'], /s-maxage=\d+/)
   }
 })
 
@@ -88,8 +92,8 @@ test('flash-sale failures are not cached at the CDN and recover on retry', async
   let failed = true
   const route = load('src/app/api/medusa/flash-sale/products/route.ts', {
     'next/server': { NextResponse: { json: (data, options) => ({ data, ...options }) } },
-    '@/lib/flash-sale-cache': load('src/lib/flash-sale-cache.ts'), '@/lib/home-flash-sale': {},
-    axios: { get: async () => { if (failed) throw Error('offline'); return { data: { active: false, products: [] } } } },
+    '@/lib/flash-sale-cache': load('src/lib/flash-sale-cache.ts'),
+    '@/lib/flash-sale-server': { loadFlashSale: async () => { if (failed) throw Error('offline'); return { active:false, products:[] } } },
   }, { process: { env: {} }, console: { warn() {} } })
   const request = { nextUrl: new URL('https://shop.example/api/medusa/flash-sale/products') }
   assert.equal((await route.GET(request)).headers['Cache-Control'], 'no-store')
@@ -140,15 +144,57 @@ test('vendor consumers share in-flight pulse work, preserve invalidations, and s
   assert.equal([...h.events.values()].reduce((n, set) => n + set.size, 0), 0)
 })
 
-test('vendor pulse does not deliver a previous account response after token changes', async () => {
-  const h = browserHarness(); let finish, delivered = 0
+test('successful cookie-based login and logout rotate a separate public session version', async () => {
+  const next = require('../vendor-portal/node_modules/next/server')
+  const route = load('vendor-portal/app/api/auth/session/route.ts', {
+    'next/server': next,
+    '@/lib/activity-ip': {portalActivityHeaders:()=>({})},
+    '@/lib/medusa-proxy': { getMedusaBackendUrl: () => 'https://backend.example' },
+    '@/lib/simple-rate-limit': { checkRateLimit: () => ({allowed:true}), clientIpFromRequest: () => 'localhost' },
+    '@/lib/api/token': { sealVendorSession: () => 'fixture-session' },
+  }, { process: {env:{}}, fetch: async () => Response.json({token:'fixture-access'}) })
+  const versions = new Set()
+  for (const name of ['a','b']) {
+    const res = await route.POST({json:async()=>({email:name+'@example.test',password:'fixture'})})
+    assert.equal(res.cookies.get('vendor_token').httpOnly, true)
+    const marker = res.cookies.get('vendor_session_version')
+    assert.ok(marker.value && !marker.httpOnly && marker.path === '/')
+    versions.add(marker.value)
+  }
+  const logout = await route.DELETE()
+  assert.equal(logout.cookies.get('vendor_token').maxAge, 0)
+  versions.add(logout.cookies.get('vendor_session_version').value)
+  assert.equal(versions.size, 3)
+})
+
+test('vendor session switch drops the pending pulse and refreshes the old tab', async () => {
+  const h = browserHarness(); let finish, delivered = 0, reloads = 0, clears = 0
+  h.globals.document.cookie = 'vendor_session_version=qa-a'
+  h.globals.window.location = { reload: () => reloads++ }
   const live = load('vendor-portal/lib/useVendorLive.ts', { react: h.react,
-    '@/lib/api/client': { vendorPulseApi: { get: () => new Promise(resolve => { finish = resolve }) } }, '@/lib/page-cache': {},
+    '@/lib/api/client': { vendorPulseApi: { get: () => new Promise(resolve => { finish = resolve }) } },
+    '@/lib/page-cache': { clearPageCache: () => clears++ },
   }, h.globals)
   live.useVendorLive({ onPulse: () => delivered++ }); h.mount()
-  h.globals.localStorage.getItem = () => 'vendor-b'
-  finish({ revision: 'private-a' }); await flush(); assert.equal(delivered, 0)
+  h.globals.document.cookie = 'vendor_session_version=qa-b'
+  finish({ revision: 'private-a' }); await flush(); h.tick(10000)
+  assert.equal(delivered, 0); assert.equal(reloads, 1); assert.equal(clears, 1)
   h.unmount()
+})
+
+test('a pending pulse cannot notify a newly mounted poller', async () => {
+  const h = browserHarness(); const pending = [], revisions = []
+  const live = load('vendor-portal/lib/useVendorLive.ts', {
+    react: h.react, '@/lib/api/client': { vendorPulseApi: { get: () => new Promise(resolve => pending.push(resolve)) } },
+    '@/lib/page-cache': {},
+  }, h.globals)
+  const mount = () => { live.useVendorLive({ onPulse: pulse => revisions.push(pulse.revision) }); h.mount() }
+  mount(); h.unmount(); mount()
+  assert.equal(pending.length, 2)
+  pending[0]({ revision: 'old' }); await flush(); h.tick(10000)
+  assert.equal(pending.length, 2)
+  pending[1]({ revision: 'new' }); await flush()
+  assert.deepEqual(revisions, ['new']); h.unmount()
 })
 
 for (const relative of ['src/components/debug-controller/DebugControllerProvider.tsx', 'vendor-portal/components/debug-controller/DebugControllerProvider.tsx']) {
@@ -169,16 +215,18 @@ test('vendor middleware reads settings directly while preserving maintenance and
   const response = { next: () => ({ type: 'next' }), redirect: url => ({ type: 'redirect', url: String(url) }) }
   const middleware = load('vendor-portal/middleware.ts', {
     'next/server': { NextResponse: response },
+    './lib/api/token': { unsealVendorSession: cookie => cookie === 'qa-session' ? { accessToken: 'qa-access' } : null },
     './lib/vendor-redirect': { safeVendorRedirect: value => value || '/dashboard' },
     './lib/debug-controller/settings': { getDebugControllerSettings: async () => { reads++; return { siteStatus: status } } },
   }, { fetch: () => assert.fail('Middleware must not call its own HTTP settings API') })
-  const request = url => { const nextUrl = new URL(url); nextUrl.clone = () => new URL(url); return { nextUrl, url, cookies: { get: () => undefined } } }
+  const request = (url, cookie) => { const nextUrl = new URL(url); nextUrl.clone = () => new URL(url); return { nextUrl, url, cookies: { get: () => cookie ? {value:cookie} : undefined } } }
   const login = await middleware.middleware(request('https://vendor.example/products'))
   assert.match(login.url, /login\?redirect=/)
+  assert.equal((await middleware.middleware(request('https://vendor.example/products', 'qa-session'))).type, 'next')
   status = 'maintenance'
   const maintenance = await middleware.middleware(request('https://vendor.example/products'))
   assert.equal(maintenance.url, 'https://vendor.example/maintenance')
-  assert.equal(reads, 2)
+  assert.equal(reads, 3)
   assert.equal(middleware.config.runtime, 'nodejs')
 })
 
@@ -186,11 +234,11 @@ test('vendor proxy streams data without buffering and keeps private responses no
   const nativeNext = require('../vendor-portal/node_modules/next/server')
   const upstream = new Response('{"orders":[{"id":"fixture"}]}', { headers: { 'content-type': 'application/json', 'content-encoding': 'gzip', 'content-length': '1000', 'cache-control': 'public' } })
   upstream.arrayBuffer = () => assert.fail('Proxy must not buffer the upstream response')
-  const proxy = load('vendor-portal/lib/medusa-proxy.ts', { 'next/server': nativeNext }, {
+  const proxy = load('vendor-portal/lib/medusa-proxy.ts', { './activity-ip': {portalActivityHeaders:()=>({})}, 'next/server': nativeNext, '@/lib/api/token': { unsealVendorSession: value => value === 'qa-session' ? {accessToken:'qa-access'} : null } }, {
     Headers, process: { env: { MEDUSA_BACKEND_URL: 'https://backend.example' } },
-    fetch: async (url, init) => { assert.equal(url, 'https://backend.example/vendor/orders'); assert.equal(init.cache, 'no-store'); return upstream },
+    fetch: async (url, init) => { assert.equal(url, 'https://backend.example/vendor/orders'); assert.equal(init.cache, 'no-store'); assert.equal(init.headers.get('authorization'), 'Bearer qa-access'); return upstream },
   })
-  const result = await proxy.proxyMedusaRequest({ method: 'GET', headers: new Headers(), nextUrl: { search: '' } }, ['vendor', 'orders'])
+  const result = await proxy.proxyMedusaRequest({ method: 'GET', headers: new Headers(), cookies: {get: () => ({value:'qa-session'})}, nextUrl: { search: '' } }, ['vendor', 'orders'])
   assert.match(result.headers.get('cache-control'), /no-store/)
   assert.equal(result.headers.get('content-encoding'), null)
   assert.equal(result.headers.get('content-length'), null)

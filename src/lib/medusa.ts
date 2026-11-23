@@ -96,6 +96,7 @@ export type DetailedProduct = {
   }>;
   variants: Array<{
     id: string;
+    seller_variant_ids?: string[];
     title?: string;
     inventory_quantity?: number;
     manage_inventory?: boolean;

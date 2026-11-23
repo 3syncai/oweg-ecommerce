@@ -1,4 +1,4 @@
-import {transaction,consumeCheckoutCoins,enqueuePaymentWork,freezePaidOrderItems} from "@/lib/payment-reliability";
+import {withPaymentCoordination,transaction,consumeCheckoutCoins,enqueuePaymentWork,freezePaidOrderItems} from "@/lib/payment-reliability";
 import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { NextResponse, after } from "next/server";
 import { convertDraftOrder, getOrderById, updateOrderMetadata } from "@/lib/medusa-admin";
@@ -7,7 +7,7 @@ import { OWEG10_CODE } from "@/lib/oweg10-shared";
 import { consumeOweg10Reservation, syncOweg10ConsumedCustomerMetadata } from "@/lib/oweg10";
 import { getPool } from "@/lib/wallet-ledger";
 import { getCheckoutGuardResponse } from "@/lib/debug-controller/guards";
-import { ensurePlacedOrderFulfillmentReady } from "@/lib/medusa-payment";
+import { checkoutStockIssue, releaseOrderInventoryReservations, ensurePlacedOrderFulfillmentReady } from "@/lib/medusa-payment";
 
 export const dynamic = "force-dynamic";
 
@@ -109,12 +109,22 @@ export async function POST(req: Request) {
 
   try {
     const body = (await req.json().catch(() => ({}))) as Body;
-    let medusaOrderId = body.medusaOrderId?.trim();
+    const medusaOrderId = body.medusaOrderId?.trim();
     if (!medusaOrderId) return badRequest("medusaOrderId is required");
 
     const accessError = await checkoutOrderAccessError(req, medusaOrderId);
     if (accessError) return accessError;
 
+    return await withPaymentCoordination(getPool(), "cod-confirm:" + medusaOrderId, () => confirmOrder(medusaOrderId));
+  } catch (err) {
+    console.error("cod confirm error", err);
+    return NextResponse.json({ error: "Unable to confirm COD order" }, { status: 500 });
+  }
+}
+
+async function confirmOrder(medusaOrderId: string) {
+  let held = false;
+  try {
     let order: MedusaOrder | null = null;
     const loaded = await loadCheckoutOrder(medusaOrderId);
     if (loaded?.order?.id) {
@@ -140,6 +150,12 @@ export async function POST(req: Request) {
     const eligibilityError = assertEligibleForCodConfirm(metadata);
     if (eligibilityError) {
       return badRequest(eligibilityError);
+    }
+
+    if (metadata.cod_status !== "confirmed") {
+      const issue = await checkoutStockIssue(medusaOrderId);
+      if (issue) return NextResponse.json(issue, { status: issue.status });
+      held = true;
     }
 
     if (isDraftOrder(order)) {
@@ -204,7 +220,8 @@ export async function POST(req: Request) {
       oweg10_consumed_at: isOweg10Order ? metadata.oweg10_consumed_at : undefined,
     };
 
-    await updateOrderMetadata(finalOrderId, confirmedMetadata);
+    const saved = await updateOrderMetadata(finalOrderId, confirmedMetadata);
+    if (!saved.ok) throw new Error("Unable to persist COD confirmation");
 
     if (oweg10ReservationToken && oweg10CustomerId && !metadata.oweg10_consumed) {
       try {
@@ -242,9 +259,10 @@ export async function POST(req: Request) {
       }
     }
 
+    held = false;
     await scheduleCodSideEffects(finalOrderId, confirmedMetadata);
 
-    // Allocate stock async so success UI can flip to confirmed without waiting
+    // Shipping setup can finish after stock has been secured.
     after(() =>
       ensurePlacedOrderFulfillmentReady(finalOrderId).catch((err) => {
         console.error("cod confirm: fulfillment readiness failed", err);
@@ -252,8 +270,8 @@ export async function POST(req: Request) {
     );
 
     return NextResponse.json({ ok: true, medusaOrderId: finalOrderId, status: "confirmed" });
-  } catch (err) {
-    console.error("cod confirm error", err);
-    return NextResponse.json({ error: "Unable to confirm COD order" }, { status: 500 });
+  } finally {
+    // Release on a failed confirmation. The release transaction protects confirmed orders.
+    if (held) await releaseOrderInventoryReservations(medusaOrderId);
   }
 }
