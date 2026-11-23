@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
 import { getMedusaBackendUrl } from "@/lib/medusa-proxy"
 import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit"
@@ -21,7 +22,13 @@ function cookieOptions(maxAgeSeconds: number) {
   }
 }
 
+// Public change marker only. Credentials stay in the HttpOnly session cookie.
+function markSessionChange(res: NextResponse) {
+  res.cookies.set("vendor_session_version", randomUUID(), { ...cookieOptions(7 * 86400), httpOnly: false })
+}
+
 function clearCookie(res: NextResponse) {
+  markSessionChange(res)
   res.cookies.set(COOKIE, "", { ...cookieOptions(0), maxAge: 0 })
 }
 
@@ -106,6 +113,7 @@ export async function POST(req: NextRequest) {
     sealed,
     cookieOptions(keepSignedIn ? 60 * 60 * 24 * 7 : 60 * 60 * 12)
   )
+  markSessionChange(res)
   return res
 }
 
