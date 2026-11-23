@@ -64,6 +64,13 @@ function priceIssue(price: number, regular: number, best: number) {
 
 const FlashSalePage = () => {
   const [loading, setLoading] = useState(true)
+  const [saveError, setSaveError] = useState("")
+  const [rowErrors, setRowErrors] = useState<Record<string,string>>({})
+  const clearRowError = (id: string) => setRowErrors(current => {
+    const next = { ...current }
+    delete next[id]
+    return next
+  })
   const [saving, setSaving] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [productsCount, setProductsCount] = useState(0)
@@ -210,6 +217,7 @@ const FlashSalePage = () => {
 
 
   const handleProductToggle = (product: Product) => {
+    clearRowError(product.variant_id)
     const newSelected = new Map(formData.selectedProducts)
     
     if (newSelected.has(product.variant_id)) {
@@ -227,6 +235,7 @@ const FlashSalePage = () => {
   }
 
   const handlePriceChange = (productId: string, price: number) => {
+    clearRowError(productId)
     const newSelected = new Map(formData.selectedProducts)
     const existing = newSelected.get(productId)
     if (existing) {
@@ -242,15 +251,18 @@ const FlashSalePage = () => {
     e.preventDefault()
     
     if (formData.selectedProducts.size === 0) {
-      alert("Please select at least one product")
+      setSaveError("Please select at least one product")
       return
     }
     
     if (!formData.end_time) {
-      alert("Please set an end time for the flash sale")
+      setSaveError("Please set an end time for the flash sale")
       return
     }
     
+    if (saving) return
+    setSaveError("")
+    setRowErrors({})
     setSaving(true)
     
     try {
@@ -288,11 +300,17 @@ const FlashSalePage = () => {
         alert("Flash sale saved successfully!")
       } else {
         const error = await response.json()
-        alert(`Error: ${error.message || "Failed to save flash sale"}`)
+        if (Array.isArray(error.issues) && error.issues.length) {
+          const messages: Record<string,string> = {}
+          for (const issue of error.issues) {
+            messages[issue.variant_id] = `${issue.seller || issue.variant_id} · ₹${issue.price}: ${issue.reason}`
+          }
+          setRowErrors(messages)
+        } else setSaveError(error.message || "Failed to save flash sale")
       }
     } catch (error) {
       console.error("Failed to save flash sale:", error)
-      alert("Failed to save flash sale")
+      setSaveError("Failed to save flash sale. Your selections are still here.")
     } finally {
       setSaving(false)
     }
@@ -321,6 +339,8 @@ const FlashSalePage = () => {
   }
 
   const resetForm = () => {
+    setSaveError("")
+    setRowErrors({})
     setFormData({
       title: "",
       enabled: true,
@@ -364,6 +384,7 @@ const FlashSalePage = () => {
   const applyBulkDiscount = (pct: number) => {
     if (formData.selectedProducts.size === 0) return
     const safePct = Math.min(Math.max(pct, 0), 100)
+    setRowErrors({})
     const next = new Map(formData.selectedProducts)
     next.forEach((data, productId) => {
       const newPrice = Math.max(
@@ -790,6 +811,7 @@ const FlashSalePage = () => {
                                 aria-label={`Flash price for ${product.seller} · ${product.sku}`}
                                 className="w-28"
                               />
+                              {rowErrors[product.variant_id] && <p className="text-sm text-ui-fg-error">{rowErrors[product.variant_id]}</p>}
                               {priceData && <Text size="xsmall" className="text-ui-fg-subtle">{priceIssue(priceData.price, product.price, product.best)}</Text>}
                             </div>
                             <Badge
@@ -815,6 +837,11 @@ const FlashSalePage = () => {
             </div>
           </div>
 
+          {saveError && <p role="alert" className="text-sm text-ui-fg-error">{saveError}</p>}
+          {Object.keys(rowErrors).length > 0 && <div role="alert" className="break-words text-sm text-ui-fg-error">
+            <p>Review these seller offers before publishing.</p>
+            <ul>{Object.entries(rowErrors).map(([id, message]) => <li key={id}>{message}</li>)}</ul>
+          </div>}
           <div className="flex flex-wrap items-center gap-2 border-t border-ui-border-base pt-5">
             <Button type="submit" variant="primary" disabled={saving || formData.selectedProducts.size === 0 || Array.from(formData.selectedProducts.values()).some(row => priceIssue(row.price, row.originalPrice, row.best))}>
               {saving ? "Saving..." : "Create"} Flash Sale

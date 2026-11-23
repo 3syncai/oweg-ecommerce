@@ -134,8 +134,10 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     }))
     const campaigns = (await flashSaleService.getAllFlashSaleItems()).filter(item => +new Date(item.expires_at) > Date.now())
     const assessed = await assessFlashSales(proposed, [...campaigns, ...proposed])
-    const invalid = assessed.find(item => item.reason)
-    if (invalid) return res.status(400).json({ message: invalid.reason })
+    const issues = assessed.filter(item => item.reason).map(item => ({
+      variant_id: item.variant_id, seller: item.seller, price: item.flash_sale_price, reason: item.reason,
+    }))
+    if (issues.length) return res.status(400).json({ message: issues[0].reason, issues })
     const validatedItems = assessed.map(({ product_id, variant_id, flash_sale_price, expires_at, regular }) =>
       ({ product_id, variant_id, flash_sale_price, expires_at, title, original_price: regular }))
 

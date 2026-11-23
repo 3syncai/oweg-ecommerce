@@ -237,3 +237,21 @@ test('CDN freshness cannot outlast the featured window or sale expiry', () => {
   assert.equal(flashSaleCacheSeconds({ ...payload, flash_sale: null }, 44_000), 1)
   assert.equal(currentFlashSale(payload, 43_000).products.length, 0)
 })
+
+test('batch publish returns every invalid row and writes only after all are corrected', async () => {
+  const route = load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
+    '@medusajs/framework/utils':{}, '../../../modules/flash-sale':{},
+    '../../../lib/flash-sale-title':{normalizeFlashSaleTitle:()=>null},
+    '../../../lib/flash-sale-eligibility':{assessFlashSales:async rows=>rows.map(row=>({...row,
+      regular:100, seller:row.variant_id, reason:row.flash_sale_price>=100?'Reduce the price.':''}))}
+  });
+  let writes=0;
+  const service={getAllFlashSaleItems:async()=>[],createFlashSaleItemsBatch:async rows=>{writes++;return rows}};
+  const items=[99,105,100].map((price,i)=>({variant_id:'v'+i,product_id:'p'+i,flash_sale_price:price,expires_at:'2099-01-01'}));
+  const req={body:{items},scope:{resolve:()=>service}};
+  const res={status(n){this.code=n;return this},json(body){return body}};
+  const rejected=await route.POST(req,res);
+  assert.equal(res.code,400);assert.equal(writes,0);assert.deepEqual(Array.from(rejected.issues,i=>i.variant_id),['v1','v2']);
+  items[1].flash_sale_price=90;items[2].flash_sale_price=80;
+  assert.equal((await route.POST(req,res)).flash_sale_items.length,3);assert.equal(writes,1);
+});
