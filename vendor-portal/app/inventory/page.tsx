@@ -164,9 +164,9 @@ export default function InventoryPage() {
       } else {
         console.error("Failed to fetch inventory")
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching inventory:", error)
-      if (error.status === 401) {
+      if (error && typeof error === "object" && "status" in error && error.status === 401) {
         router.push("/login")
       }
     } finally {
@@ -216,9 +216,10 @@ export default function InventoryPage() {
       } else {
         alert("Failed to update stock")
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating inventory:", error)
-      alert(error.message || "Error updating stock")
+      const message = error && typeof error === "object" && "message" in error ? error.message : null
+      alert(typeof message === "string" && message ? message : "Error updating stock")
     } finally {
       setSaving(false)
     }
