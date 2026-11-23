@@ -209,6 +209,17 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   // Carry that visible choice through cart and checkout as well.
   const sellerChoicePinned = Boolean(selectedSellerOffer)
   const purchaseVariantId = selectedVariant ? (selectedSellerOffer?.variant_id ?? selectedVariant.id) : undefined
+  const policyQuery = useQuery({
+    queryKey: ["product-return-policy", purchaseVariantId],
+    enabled: Boolean(purchaseVariantId),
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async ({signal}): Promise<{return_window_days:number; replacement_window_days:number} | null> => {
+      const response = await fetch(`/api/product-policy?variant=${encodeURIComponent(purchaseVariantId!)}`, {signal})
+      if (!response.ok) throw new Error("Return policy unavailable")
+      return (await response.json()).policy
+    },
+  })
   const sellerHasStock = selectedSellerOffer ? !selectedSellerOffer.delivery_unavailable && selectedSellerOffer.available > 0 : sellersSoldOut && selectedVariant?.manage_inventory !== false ? false : undefined
   const sellerInventory = selectedSellerOffer?.available
 
@@ -1318,6 +1329,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 <ProductSummary
                   deliveryInfo={
                 <DeliveryInfo
+                  policy={policyQuery.data}
                   pinCode={pinCode}
                   pinStatus={pinStatus}
                   pinMessage={pinMessage}
