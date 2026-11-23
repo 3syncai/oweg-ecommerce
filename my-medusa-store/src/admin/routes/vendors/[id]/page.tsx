@@ -82,6 +82,7 @@ type VendorProduct = {
 }
 
 type Vendor = {
+    account_activity?: Array<{email:string;login_ip:string|null;login_at:string|null;activity_ip:string|null;activity_at:string|null}> | null
     id: string
     name: string
     first_name?: string | null
@@ -620,6 +621,15 @@ const VendorDetailPage = () => {
                         <InfoRow label="WhatsApp" value={vendor.whatsapp_number} />
                     </InfoCard>
 
+                    <InfoCard title="Account activity">
+                        {vendor.account_activity?.length ? vendor.account_activity.map(account =>
+                            <div key={account.email} className="min-w-0 break-words py-2">
+                                <strong>{account.email}</strong>
+                                <p>Last login · {account.login_ip ?? "IP unavailable"} · {account.login_at ? new Date(account.login_at).toLocaleString() : "Not recorded"}</p>
+                                <p>Last activity · {account.activity_ip ?? "IP unavailable"} · {account.activity_at ? new Date(account.activity_at).toLocaleString() : "Not recorded"}</p>
+                            </div>
+                        ) : <p>Account activity unavailable.</p>}
+                    </InfoCard>
                     <InfoCard title="Store Information">
                         <InfoRow label="Store Name" value={vendor.store_name} />
                         <InfoRow label="Store Phone" value={vendor.store_phone} />

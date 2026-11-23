@@ -148,6 +148,7 @@ test('successful cookie-based login and logout rotate a separate public session 
   const next = require('../vendor-portal/node_modules/next/server')
   const route = load('vendor-portal/app/api/auth/session/route.ts', {
     'next/server': next,
+    '@/lib/activity-ip': {portalActivityHeaders:()=>({})},
     '@/lib/medusa-proxy': { getMedusaBackendUrl: () => 'https://backend.example' },
     '@/lib/simple-rate-limit': { checkRateLimit: () => ({allowed:true}), clientIpFromRequest: () => 'localhost' },
     '@/lib/api/token': { sealVendorSession: () => 'fixture-session' },
@@ -233,7 +234,7 @@ test('vendor proxy streams data without buffering and keeps private responses no
   const nativeNext = require('../vendor-portal/node_modules/next/server')
   const upstream = new Response('{"orders":[{"id":"fixture"}]}', { headers: { 'content-type': 'application/json', 'content-encoding': 'gzip', 'content-length': '1000', 'cache-control': 'public' } })
   upstream.arrayBuffer = () => assert.fail('Proxy must not buffer the upstream response')
-  const proxy = load('vendor-portal/lib/medusa-proxy.ts', { 'next/server': nativeNext, '@/lib/api/token': { unsealVendorSession: value => value === 'qa-session' ? {accessToken:'qa-access'} : null } }, {
+  const proxy = load('vendor-portal/lib/medusa-proxy.ts', { './activity-ip': {portalActivityHeaders:()=>({})}, 'next/server': nativeNext, '@/lib/api/token': { unsealVendorSession: value => value === 'qa-session' ? {accessToken:'qa-access'} : null } }, {
     Headers, process: { env: { MEDUSA_BACKEND_URL: 'https://backend.example' } },
     fetch: async (url, init) => { assert.equal(url, 'https://backend.example/vendor/orders'); assert.equal(init.cache, 'no-store'); assert.equal(init.headers.get('authorization'), 'Bearer qa-access'); return upstream },
   })

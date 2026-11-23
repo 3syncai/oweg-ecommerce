@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
+import { portalActivityHeaders } from "@/lib/activity-ip"
 import { getMedusaBackendUrl } from "@/lib/medusa-proxy"
 import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit"
 import { sealVendorSession, unsealVendorSession } from "@/lib/api/token"
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
   const upstream = await fetch(`${backend}/vendor/auth/login`, {
     method: "POST",
     headers: {
+      ...portalActivityHeaders(req.headers),
       "Content-Type": "application/json",
       ...(publishableKey ? { "x-publishable-api-key": publishableKey } : {}),
     },
