@@ -19,7 +19,8 @@ import type { Pool } from "pg"
 import { clampTaxRate } from "./vendor-marketplace-tax"
 
 export const DEFAULT_PLATFORM_FEE_RATE = 5
-export const DEFAULT_PARTNER_COMMISSION_RATE = 11
+/** Partner % is product-scoped (NH catalog) at order place. Store default is 0. */
+export const DEFAULT_PARTNER_COMMISSION_RATE = 0
 export const DEFAULT_SERVICE_GST_RATE = 18
 export const DEFAULT_OUTPUT_GST_RATE = 18
 export const DEFAULT_CANCELLATION_CHARGE = 0

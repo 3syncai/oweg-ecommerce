@@ -436,7 +436,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
           : {
               platform_rate: platformRate ?? 5,
               commission_rate: commissionRate,
-              partner_rate: partner_sale ? partnerRateOverride ?? 11 : 0,
+              partner_rate: partner_sale ? partnerRateOverride ?? 0 : 0,
               output_gst_rate: outputGstRate,
               service_gst_rate: serviceGstRate ?? 18,
               tcs_rate: tcsRate,
