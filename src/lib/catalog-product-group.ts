@@ -83,8 +83,11 @@ export function mergeCatalogProductDetails(products: DetailedProduct[], catalogI
     }
   }
 
-  const variants = Array.from(variantsByOptions.values(), group => [...group].sort((a, b) =>
-    Number(available(b)) - Number(available(a)) || a.price - b.price || (b.inventory_quantity || 0) - (a.inventory_quantity || 0))[0])
+  const variants = Array.from(variantsByOptions.values(), group => {
+    const [representative] = [...group].sort((a, b) => Number(available(b)) - Number(available(a))
+      || a.price - b.price || (b.inventory_quantity || 0) - (a.inventory_quantity || 0))
+    return { ...representative, seller_variant_ids: group.map(variant => variant.id) }
+  })
   const best = [...variants].filter(available).sort((a, b) => a.price - b.price || (b.inventory_quantity || 0) - (a.inventory_quantity || 0))[0]
     || [...variants].sort((a, b) => a.price - b.price)[0]
   const options = Array.from(optionNames, ([key, title]) => ({

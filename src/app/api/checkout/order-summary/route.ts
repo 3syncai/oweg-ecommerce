@@ -1,3 +1,4 @@
+import { priceCartPayload } from "@/lib/cart-flash-prices";
 import { loadAuthorizedCheckoutOrder } from "@/lib/checkout-order-access";
 import { NextResponse } from "next/server";
 import { readStoreCart } from "@/lib/medusa-admin";
@@ -85,7 +86,8 @@ export async function GET(req: Request) {
       billing_address: order.billing_address,
       metadata: { payment_method: metadata.payment_method, mode: metadata.mode,
         cod_status: metadata.cod_status, razorpay_payment_status: metadata.razorpay_payment_status,
-        checkout_duplicate_suppressed: metadata.checkout_duplicate_suppressed },
+        checkout_stock_pending: metadata.checkout_stock_pending,
+          checkout_duplicate_suppressed: metadata.checkout_duplicate_suppressed },
     },
   }, { headers: { "Cache-Control": "private, no-store" } });
 }
@@ -115,7 +117,7 @@ export async function POST(req: Request) {
     const cartId = body.cartId || body.guestCartId || undefined;
 
     const cartRes = await readStoreCart(cartId);
-    const cart = cartRes?.cart || null;
+    const cart = cartRes?.cart ? (await priceCartPayload(cartRes)).cart : null;
     const subtotal = normalizeSubtotalFromCart(cart);
     const totals = {
       subtotal,

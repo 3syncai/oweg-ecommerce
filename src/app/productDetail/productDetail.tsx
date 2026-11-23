@@ -51,7 +51,6 @@ import {
 import { useAuth } from '@/contexts/AuthProvider'
 import { useDeliveryLocation } from '@/contexts/DeliveryLocationProvider'
 import { useAddToCart } from '@/hooks/useCartMutations'
-import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
 import SellerOffers from '@/components/modules/SellerOffers'
 import { useSellerOffers } from '@/hooks/useSellerOffers'
@@ -189,33 +188,28 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   })
   const product = productResponse?.product ?? null
   const currentProductId = product?.id
-  const { flashSaleInfo } = useFlashSale(currentProductId)
+  const linkedOffer = searchParams?.get("offer") ?? null
 
   useEffect(() => {
-    setSelectedOptions(product ? initialProductOptions(product) : {})
-    setExplicitVariantId(null)
-    setSelectedSellerVariantId(null)
+    const linked = product?.variants.find(variant => variant.id === linkedOffer || (linkedOffer && variant.seller_variant_ids?.includes(linkedOffer)))
+    setSelectedOptions(linked?.options ?? (product ? initialProductOptions(product) : {}))
+    setExplicitVariantId(linked?.id ?? null)
+    setSelectedSellerVariantId(linkedOffer)
     setQuantity(1)
-  }, [product?.id])
+  }, [product?.id, linkedOffer])
 
   const selectedVariant = useMemo(() => {
     return product ? selectedProductVariant(product, selectedOptions, explicitVariantId) : null
   }, [product, selectedOptions, explicitVariantId])
   const selectionRequired = Boolean(product?.variants.length && !selectedVariant)
 
-  const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(selectedVariant?.id)
-  const visibleSellerOffers = useMemo(() => sellerOffers?.map(offer => ({
-    ...offer,
-    price: offer.variant_id === selectedVariant?.id && flashSaleInfo?.active && typeof flashSaleInfo.flash_sale_price === 'number'
-      ? Math.min(offer.price, flashSaleInfo.flash_sale_price)
-      : offer.price,
-  })).sort((a, b) => a.price - b.price || b.available - a.available || a.variant_id.localeCompare(b.variant_id)), [sellerOffers, selectedVariant?.id, flashSaleInfo?.active, flashSaleInfo?.flash_sale_price])
-  const selectedSellerOffer = visibleSellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? visibleSellerOffers?.[0]
+  const { data: visibleSellerOffers, soldOut: sellersSoldOut, isLoading: sellerOffersLoading } = useSellerOffers(selectedVariant?.id, quantity, pinCode ?? undefined)
+  const selectedSellerOffer = visibleSellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId && !offer.delivery_unavailable) ?? visibleSellerOffers?.[0]
   // The first offer is shown as "Selected" even before the buyer clicks it.
   // Carry that visible choice through cart and checkout as well.
   const sellerChoicePinned = Boolean(selectedSellerOffer)
   const purchaseVariantId = selectedVariant ? (selectedSellerOffer?.variant_id ?? selectedVariant.id) : undefined
-  const sellerHasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : undefined
+  const sellerHasStock = selectedSellerOffer ? !selectedSellerOffer.delivery_unavailable && selectedSellerOffer.available > 0 : sellersSoldOut && selectedVariant?.manage_inventory !== false ? false : undefined
   const sellerInventory = selectedSellerOffer?.available
 
   const displayProduct = useMemo(() => {
@@ -253,7 +247,13 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   // Pull the live flash-sale info for this product so the price block in
   // ProductSummary shows the flash price + countdown when one is active.
   // Without this the PDP silently shows the regular catalogue price.
-  const selectedFlashSaleInfo = purchaseVariantId === selectedVariant?.id ? flashSaleInfo : undefined
+  const selectedFlashSaleInfo = selectedSellerOffer?.flash_sale
+  const [acceptedQuote, setAcceptedQuote] = useState("")
+  const advertisedPrice = Number(searchParams?.get("deal"))
+  const currentQuote = JSON.stringify([purchaseVariantId, displayProduct?.price, pinCode, quantity])
+  const changedDeal = Boolean(linkedOffer && advertisedPrice > 0 && (!selectedSellerVariantId || selectedSellerVariantId === linkedOffer)
+    && (purchaseVariantId !== linkedOffer || selectedFlashSaleInfo?.flash_sale_price !== advertisedPrice))
+  const needsPriceReview = changedDeal && acceptedQuote !== currentQuote
   const checkoutSellerChoicePinned = sellerChoicePinned
   const categoryIds = useMemo(
     () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
@@ -1082,7 +1082,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
     const itemLabel = label ?? product?.title ?? "Item";
     try {
-      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected, animationSource: captureCartFlight(document.querySelector("[data-cart-product-gallery]")) });
+      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected, delivery_pincode: pinCode, expected_flash_price: variantId === selectedFlashSaleInfo?.variant_id ? selectedFlashSaleInfo?.flash_sale_price : undefined, animationSource: captureCartFlight(document.querySelector("[data-cart-product-gallery]")) });
       notifyCartAddSuccess(itemLabel, qty, goToCart);
     } catch (err) {
       console.warn("addVariantToCart failed", err);
@@ -1092,7 +1092,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const handleAddToCart = async () => {
     if (!selectedVariant || selectionRequired) { toast.error('Please choose your product options first.'); return }
-    if (cartActionPending || buyNowPending || sellerOffersLoading) return
+    if (cartActionPending || buyNowPending || sellerOffersLoading || needsPriceReview) return
     if (!(sellerHasStock ?? hasStock)) {
       notifyOutOfStock()
       return
@@ -1106,7 +1106,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const handleBuyNow = () => {
     if (!selectedVariant || selectionRequired) { toast.error('Please choose your product options first.'); return }
-    if (cartActionPending || buyNowPending || sellerOffersLoading) return
+    if (cartActionPending || buyNowPending || sellerOffersLoading || needsPriceReview) return
     if (!product) {
       notifyCartUnavailable()
       return
@@ -1341,17 +1341,28 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   onQuantityChange={handleQuantityChange}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
-                  cartBusy={cartActionPending || sellerOffersLoading}
-                  buyNowBusy={buyNowPending || sellerOffersLoading}
+                  cartBusy={cartActionPending || sellerOffersLoading || needsPriceReview}
+                  buyNowBusy={buyNowPending || sellerOffersLoading || needsPriceReview}
                   onShare={shareProduct}
                   onSaveForLater={handleSaveForLater}
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
                   flashSaleInfo={selectedFlashSaleInfo}
-                  sellerOffers={visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId ? (
-                    <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId} onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
-                  ) : null}
+                  sellerOffers={<>
+                    {needsPriceReview && !sellerOffersLoading && (
+                      <div role="status" className="my-2 rounded border p-3 text-sm">
+                        {selectedSellerOffer ? <>
+                          This deal has changed. Review the seller and current price.{" "}
+                          <button type="button" className="underline" onClick={() => setAcceptedQuote(currentQuote)}>Accept current offer</button>
+                        </> : "The advertised seller offer is unavailable."}
+                      </div>
+                    )}
+                    {visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId && (
+                      <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId}
+                        onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
+                    )}
+                  </>}
                 />
 
               </div>

@@ -13,7 +13,7 @@ export function checkoutConfirmationState(order: ConfirmationSnapshot | null | u
   const paid = ["paid", "captured"].includes(value(order?.payment_status)) || value(metadata.razorpay_payment_status) === "captured";
   const cancelled = ["canceled", "cancelled"].includes(value(order?.status));
   const draft = !order?.id || order.is_draft_order === true || value(order.status) === "draft";
-  const complete = !draft && !cancelled && metadata.checkout_duplicate_suppressed !== true && (cod ? value(metadata.cod_status) === "confirmed" : paid);
+  const complete = !draft && !cancelled && metadata.checkout_stock_pending !== true && metadata.checkout_duplicate_suppressed !== true && (cod ? value(metadata.cod_status) === "confirmed" : paid);
   return { cod, paid, draft, cancelled, complete };
 }
 

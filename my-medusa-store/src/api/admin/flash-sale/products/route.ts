@@ -2,6 +2,8 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { Client } from "pg"
 
+import { offersByVariant } from "../../../../lib/vendor-offer-routing"
+
 type CategoryRow = {
   id: string
   parent_category_id?: string | null
@@ -266,83 +268,20 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
       return res.json({ products: [], count: 0, limit: limitNum })
     }
 
-    const pricesMap = new Map<string, number>()
-
-    try {
-      const placeholders = productIds.map((_, i) => `$${i + 1}`).join(",")
-
-      const priceQuery = `
-        SELECT DISTINCT ON (pv.product_id)
-          pv.product_id,
-          p.amount,
-          p.currency_code,
-          p.price_set_id
-        FROM product_variant pv
-        INNER JOIN product_variant_price_set pvps ON pvps.variant_id = pv.id
-        INNER JOIN price_set ps ON ps.id = pvps.price_set_id
-        INNER JOIN price p ON p.price_set_id = ps.id
-        WHERE pv.product_id IN (${placeholders})
-          AND p.amount IS NOT NULL
-          AND p.amount > 0
-          AND p.deleted_at IS NULL
-        ORDER BY pv.product_id,
-                 CASE WHEN p.currency_code = 'inr' THEN 0 ELSE 1 END,
-                 p.amount ASC
-      `
-
-      const result = await dbClient.query(priceQuery, productIds)
-
-      result.rows.forEach((row: any) => {
-        if (row.product_id && row.amount) {
-          const amount =
-            typeof row.amount === "string"
-              ? parseFloat(row.amount)
-              : Number(row.amount)
-
-          if (isNaN(amount) || amount <= 0) {
-            return
-          }
-
-          const existingPrice = pricesMap.get(row.product_id)
-          const isInr = row.currency_code?.toLowerCase() === "inr"
-
-          if (!existingPrice) {
-            pricesMap.set(row.product_id, amount)
-          } else if (isInr) {
-            pricesMap.set(row.product_id, amount)
-          }
-        }
-      })
-    } catch (dbError: any) {
-      console.error(
-        "[Flash Sale Products] Price query error:",
-        dbError.message
-      )
-    }
-
-    const formattedProducts = filteredProducts.map((product: any) => {
-      let price = 0
-      if (pricesMap.has(product.id)) {
-        const priceAmount = pricesMap.get(product.id) || 0
-        price =
-          typeof priceAmount === "string"
-            ? parseFloat(priceAmount)
-            : priceAmount
-      }
-
-      const variantId =
-        product.variants && product.variants.length > 0
-          ? product.variants[0].id
-          : null
-
-      return {
-        id: product.id,
-        title: product.title,
-        thumbnail: product.thumbnail,
-        images: product.images,
-        price: price,
-        variant_id: variantId,
-      }
+    const variants = await dbClient.query<{ id: string; product_id: string }>(
+      "SELECT id, product_id FROM product_variant WHERE product_id = ANY($1::text[]) AND deleted_at IS NULL ORDER BY product_id, created_at, id",
+      [productIds]
+    )
+    const groups = await offersByVariant(variants.rows.map(row => row.id))
+    const productsById = new Map(filteredProducts.map(product => [product.id, product]))
+    const formattedProducts = variants.rows.flatMap(row => {
+      const candidates = groups.get(row.id) ?? []
+      const own = candidates.find(offer => offer.variant_id === row.id)
+      if (!own || !own.prices.length || own.available < 1) return []
+      const product = productsById.get(row.product_id)
+      return [{ id: row.product_id, title: product.title, thumbnail: product.thumbnail,
+        seller: own.store_name, sku: own.sku, variant_id: row.id, price: Math.min(...own.prices, Number(own.recent_regular) || Infinity),
+        best: Math.min(...candidates.filter(offer => offer.available >= 1).flatMap(offer => offer.prices)) }]
     })
 
     return res.json({

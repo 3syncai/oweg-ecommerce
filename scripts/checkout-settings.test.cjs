@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
 
-function fixture(env, initialSettings = {}, { draftStatus = 200, sessionStatus = 200 } = {}) {
+function fixture(env, initialSettings = {}, { draftStatus = 200, sessionStatus = 200, stockIssue = null } = {}) {
   const modules = new Map();
   const calls = { pools: 0, queries: [], errors: [], carts: 0, temporaryCarts: 0, drafts: 0, gateway: 0 };
   let settings = initialSettings;
@@ -49,7 +49,9 @@ function fixture(env, initialSettings = {}, { draftStatus = 200, sessionStatus =
     '@/lib/medusa-auth': {
       medusaStoreFetch: async () => Response.json({ customer: { id: 'cus_fixture' } }, { status: sessionStatus }),
     },
-    '@/lib/checkout-order': {}, '@/lib/medusa-promo': {}, '@/lib/wallet-ledger': {},
+    '@/lib/medusa-payment': {checkoutStockIssue: async () => stockIssue},
+    '@/lib/checkout-order': {updateCheckoutOrderMetadata:async()=>{}},
+    '@/lib/checkout-payment-snapshot': {persistSnapshotForCheckout:async()=>{}}, '@/lib/medusa-promo': {}, '@/lib/wallet-ledger': {},
     '@/lib/customer-affiliate-coins': {}, '@/lib/payment-reliability': {}, '@/lib/oweg10': {},
     '@/lib/order-discount': { syncOrderTaxInclusivePricing: async () => {} },
     '@/lib/shipping-rules': { calculateStatewiseShipping: () => 50 },
@@ -144,6 +146,18 @@ test('COD and Razorpay can prepare drafts with the controller disabled', async (
   assert.equal(f.calls.gateway, 1);
   assert.equal(f.calls.temporaryCarts, 1);
   assert.equal(f.calls.pools, 0);
+});
+
+test('Razorpay withholds payment details on stock conflict for both cart and Buy Now', async () => {
+  const stockIssue = {status:409, code:'stock_unavailable', error:'QA kettle is out of stock.'};
+  const f = fixture({ NODE_ENV:'production', DATABASE_URL:'mock://commerce', MEDUSA_REGION_ID:'reg_fixture' }, {}, {stockIssue});
+  for (const buyNow of [false, true]) {
+    const response = await f.draft('razorpay', buyNow);
+    assert.equal(response.status, 409);
+    const data = await response.json();
+    assert.equal(data.code, 'stock_unavailable');
+    assert.equal(data.razorpay, undefined);
+  }
 });
 
 test('maintenance blocks before a cart read or order write', async () => {

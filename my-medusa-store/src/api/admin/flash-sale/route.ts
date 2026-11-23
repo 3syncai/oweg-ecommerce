@@ -1,6 +1,6 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
-import { Client } from "pg"
+import { assessFlashSales } from "../../../lib/flash-sale-eligibility"
 import FlashSaleModuleService from "../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../modules/flash-sale"
 import { normalizeFlashSaleTitle } from "../../../lib/flash-sale-title"
@@ -11,7 +11,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     const productModuleService = req.scope.resolve(Modules.PRODUCT)
     
     // Get all flash sale items (including expired ones for display)
-    const allItems = await flashSaleService.listFlashSaleItems({})
+    const allItems = await flashSaleService.getAllFlashSaleItems()
     
     // Filter out deleted items
     const activeItems = allItems.filter((item: any) => !item.deleted_at)
@@ -27,7 +27,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
       try {
         const products = await productModuleService.listProducts({
           id: productIds,
-        })
+        }, { take: productIds.length })
 
         products.forEach((product: any) => {
           productsMap.set(product.id, {
@@ -44,7 +44,8 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 
     // Group items by expiration time and enrich with product data
     const now = new Date()
-    const enrichedItems = activeItems.map((item: any) => {
+    const assessed = await assessFlashSales(activeItems, activeItems.filter(item => +new Date(item.expires_at) > Date.now()))
+    const enrichedItems = assessed.map((item: any) => {
       const expiresAt = item.expires_at instanceof Date ? item.expires_at : new Date(item.expires_at)
       const isActive = expiresAt > now
       const product = productsMap.get(item.product_id) || {
@@ -56,7 +57,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
       // the catalogue. This is the exact same condition the storefront uses,
       // so the admin can see at-a-glance what the customer sees.
       const isPublished = product.status === "published"
-      const isLive = isActive && isPublished
+      const isLive = isActive && isPublished && !item.reason
 
       return {
         id: item.id,
@@ -73,6 +74,8 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         updated_at: item.updated_at,
         is_active: isActive,
         is_live: isLive,
+        seller: item.seller,
+        hidden_reason: item.reason,
         time_remaining_ms: isActive ? Math.max(0, expiresAt.getTime() - now.getTime()) : 0,
       }
     })
@@ -109,9 +112,6 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
     const flashSaleService: FlashSaleModuleService = req.scope.resolve(FLASH_SALE_MODULE)
-    const productModuleService = req.scope.resolve(Modules.PRODUCT)
-    const query = req.scope.resolve("query")
-    
     const { items, title: requestedTitle } = req.body as any
     let title: string | null
     try { title = normalizeFlashSaleTitle(requestedTitle) }
@@ -124,91 +124,21 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       })
     }
     
-    // Validate each item and fetch variant info
-    const validatedItems: any[] = []
-    for (const item of items) {
-      if (!item.product_id) {
-        return res.status(400).json({ 
-          message: "Each item must have a product_id" 
-        })
-      }
-      if (!item.flash_sale_price || typeof item.flash_sale_price !== 'number') {
-        return res.status(400).json({ 
-          message: "Each item must have a flash_sale_price (number)" 
-        })
-      }
-      if (!item.expires_at) {
-        return res.status(400).json({ 
-          message: "Each item must have an expires_at (timer)" 
-        })
-      }
-      
-      // Get variant_id - use provided one or fetch from database
-      let variantId = item.variant_id
-      
-      // If variant_id not provided or is null, fetch from database directly
-      if (!variantId) {
-        try {
-          // Use direct database query to fetch first variant (most reliable)
-          const databaseUrl = process.env.DATABASE_URL
-          if (!databaseUrl) {
-            return res.status(500).json({ 
-              message: "DATABASE_URL environment variable is not set" 
-            })
-          }
-          
-          const dbClient = new Client({
-            connectionString: databaseUrl,
-          })
-          
-          try {
-            await dbClient.connect()
-            
-            const result = await dbClient.query(
-              `SELECT id FROM product_variant WHERE product_id = $1 AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`,
-              [item.product_id]
-            )
-            
-            if (result.rows.length === 0) {
-              await dbClient.end()
-              return res.status(400).json({ 
-                message: `Product ${item.product_id} has no variants. Please ensure the product has at least one variant in the product details page.` 
-              })
-            }
-            
-            variantId = result.rows[0].id
-            console.log(`[Flash Sale] Found variant ${variantId} for product ${item.product_id}`)
-            
-            await dbClient.end()
-          } catch (dbErr: any) {
-            await dbClient.end()
-            throw dbErr
-          }
-        } catch (variantErr: any) {
-          console.error(`Error fetching variants for product ${item.product_id}:`, variantErr)
-          return res.status(400).json({ 
-            message: `Failed to fetch variants for product ${item.product_id}: ${variantErr.message}. Please ensure the product has at least one variant.` 
-          })
-        }
-      }
-      
-      // Validate variant_id is present
-      if (!variantId) {
-        return res.status(400).json({ 
-          message: `Could not determine variant_id for product ${item.product_id}. Please ensure the product has at least one variant.` 
-        })
-      }
-      
-      validatedItems.push({
-        title,
-        product_id: item.product_id,
-        variant_id: variantId,
-        flash_sale_price: item.flash_sale_price,
-        original_price: item.original_price || 0, // Use provided original_price
-        expires_at: item.expires_at,
-      })
+    if (items.some(item => !item?.product_id || !item.variant_id || !Number.isFinite(item.flash_sale_price)
+      || !(Date.parse(item.expires_at) > Date.now()))) {
+      return res.status(400).json({ message: "Choose a seller variant, a valid price and a future end time." })
     }
-    
+    const proposed = items.map(item => ({
+      product_id: item.product_id, variant_id: item.variant_id, flash_sale_price: item.flash_sale_price,
+      expires_at: item.expires_at,
+    }))
+    const campaigns = (await flashSaleService.getAllFlashSaleItems()).filter(item => +new Date(item.expires_at) > Date.now())
+    const assessed = await assessFlashSales(proposed, [...campaigns, ...proposed])
+    const invalid = assessed.find(item => item.reason)
+    if (invalid) return res.status(400).json({ message: invalid.reason })
+    const validatedItems = assessed.map(({ product_id, variant_id, flash_sale_price, expires_at, regular }) =>
+      ({ product_id, variant_id, flash_sale_price, expires_at, title, original_price: regular }))
+
     // Create flash sale items
     const createdItems = await flashSaleService.createFlashSaleItemsBatch(validatedItems)
     

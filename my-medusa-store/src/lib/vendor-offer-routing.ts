@@ -13,6 +13,11 @@ export type OfferCandidate = {
   vendor_email?: string | null
   product_title?: string | null
   variant_title?: string | null
+  recent_regular?: number | null
+  parcel_weight?: number | null
+  parcel_length?: number | null
+  parcel_width?: number | null
+  parcel_height?: number | null
   store_pincode?: string | null
   latitude?: number | null
   longitude?: number | null
@@ -88,20 +93,24 @@ export function chooseOffer(candidates: OfferCandidate[], quantity: number, pric
 }
 
 /** Read the same public SKU across published offers, with real free inventory. */
-async function queryCatalogOffers(variantId: string, sameSkuOnly: boolean): Promise<OfferCandidate[]> {
+async function queryCatalogOffers(variantIds: string[], sameSkuOnly: boolean, recentPrices = false) {
   const specialPriceListId = process.env.OWEG_SPECIAL_PRICE_LIST_ID || "pl_1765232034558"
-  const { rows } = await getSharedDbPool().query<OfferCandidate>(`
+  const { rows } = await getSharedDbPool().query<OfferCandidate & { origin_id: string }>(`
     WITH origin AS (
-      SELECT p.id AS product_id,
+      SELECT v.id AS origin_id, p.id AS product_id,
         COALESCE(NULLIF(p.metadata->>'catalog_product_id', ''), p.id) AS catalog_id,
         UPPER(BTRIM(COALESCE(p.metadata->'catalog_skus'->>v.sku, v.sku, ''))) AS public_sku
       FROM product_variant v JOIN product p ON p.id = v.product_id
-      WHERE v.id = $1 AND v.deleted_at IS NULL AND p.deleted_at IS NULL
+      WHERE v.id = ANY($1::text[]) AND v.deleted_at IS NULL AND p.deleted_at IS NULL
     )
-    SELECT v.id AS variant_id, p.id AS product_id, p.metadata->>'vendor_id' AS vendor_id,
+    SELECT origin.origin_id, v.id AS variant_id, p.id AS product_id, p.metadata->>'vendor_id' AS vendor_id,
       p.title AS product_title, v.title AS variant_title,
       COALESCE(NULLIF(BTRIM(seller.store_name), ''), NULLIF(BTRIM(seller.name), ''), 'OWEG seller') AS store_name,
       seller.name AS vendor_name, seller.email AS vendor_email,
+      CASE WHEN $4::boolean THEN (SELECT MIN(f.original_price) FROM flash_sale_item f
+        WHERE f.variant_id = v.id AND f.original_price > 0 AND f.created_at >= now() - interval '30 days') END AS recent_regular,
+      COALESCE(v.weight::text, p.weight::text) AS parcel_weight, COALESCE(v.length::text, p.length::text) AS parcel_length,
+      COALESCE(v.width::text, p.width::text) AS parcel_width, COALESCE(v.height::text, p.height::text) AS parcel_height,
       seller.store_pincode, geo.latitude, geo.longitude,
       UPPER(BTRIM(COALESCE(p.metadata->'catalog_skus'->>v.sku, v.sku, ''))) AS sku,
       COALESCE((SELECT SUM(GREATEST(il.stocked_quantity - il.reserved_quantity, 0) / GREATEST(pvii.required_quantity, 1))
@@ -127,19 +136,19 @@ async function queryCatalogOffers(variantId: string, sameSkuOnly: boolean): Prom
     LEFT JOIN postal_location_cache geo ON geo.postal_code=seller.store_pincode
     WHERE ($3::boolean = false OR (origin.public_sku <> ''
       AND UPPER(BTRIM(COALESCE(p.metadata->'catalog_skus'->>v.sku, v.sku, ''))) = origin.public_sku))
-  `, [variantId, specialPriceListId, sameSkuOnly])
+  `, [variantIds, specialPriceListId, sameSkuOnly, recentPrices])
   return rows.map(row => ({ ...row, available: Number(row.available), prices: (row.prices || []).map(Number),
     latitude: row.latitude == null ? null : Number(row.latitude), longitude: row.longitude == null ? null : Number(row.longitude) }))
 }
 
 /** Published variants of the same catalog product, including other colours and sizes. */
 export async function listCatalogOffers(variantId: string): Promise<OfferCandidate[]> {
-  return queryCatalogOffers(variantId, false)
+  return queryCatalogOffers([variantId], false)
 }
 
 /** Read the same public SKU across published offers, with real free inventory. */
-export async function listSameSkuOffers(variantId: string): Promise<OfferCandidate[]> {
-  return queryCatalogOffers(variantId, true)
+export async function listSameSkuOffers(variantId: string, recentPrices = false): Promise<OfferCandidate[]> {
+  return queryCatalogOffers([variantId], true, recentPrices)
 }
 
 export async function selectSameSkuOffer(variantId: string, quantity: number, price: number, excludedVendorIds: string[] = []) {
@@ -159,4 +168,16 @@ export async function selectSameSkuOfferWithDecision(variantId: string, quantity
       latitude: Number(location.rows[0].latitude), longitude: Number(location.rows[0].longitude) }
   }
   return chooseOfferDecision(await listSameSkuOffers(variantId), quantity, price, excludedVendorIds, destination)
+}
+
+export async function offersByVariant(ids: string[]) {
+  const grouped = new Map<string, OfferCandidate[]>()
+  if (ids.length) {
+    for (const offer of await queryCatalogOffers([...new Set(ids)], true, true)) {
+      const group = grouped.get(offer.origin_id) ?? []
+      group.push(offer)
+      grouped.set(offer.origin_id, group)
+    }
+  }
+  return grouped
 }

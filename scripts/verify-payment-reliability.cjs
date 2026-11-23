@@ -156,7 +156,7 @@ async function main(){
  });
  await pool.query(`ALTER TABLE "order" ADD version int DEFAULT 1;ALTER TABLE order_item ADD fulfilled_quantity numeric DEFAULT 0;
  ALTER TABLE product_variant ADD manage_inventory boolean DEFAULT true;ALTER TABLE product_variant ADD allow_backorder boolean DEFAULT false;
- CREATE TABLE stock_location(id text PRIMARY KEY);INSERT INTO stock_location VALUES('loc');
+ CREATE TABLE stock_location(id text PRIMARY KEY,name text,deleted_at timestamptz);INSERT INTO stock_location VALUES('loc','Default Warehouse',NULL);
  CREATE TABLE product_variant_inventory_item(variant_id text,inventory_item_id text,required_quantity numeric DEFAULT 1,deleted_at timestamptz);
  CREATE TABLE inventory_level(id text PRIMARY KEY,inventory_item_id text,location_id text,stocked_quantity numeric,reserved_quantity numeric DEFAULT 0,raw_reserved_quantity jsonb,deleted_at timestamptz,updated_at timestamptz DEFAULT now());
  CREATE TABLE reservation_item(id text PRIMARY KEY,line_item_id text,location_id text,quantity numeric,raw_quantity jsonb,inventory_item_id text,allow_backorder boolean,created_at timestamptz,updated_at timestamptz,deleted_at timestamptz);
@@ -186,6 +186,48 @@ async function main(){
    try{assert.equal((await medusa.ensureOrderReservations('stock_d')).success,false);}finally{await pool.query('DROP TRIGGER fail_level ON inventory_level;DROP FUNCTION fail_level()');}
    assert.equal((await pool.query("SELECT count(*)::int AS n FROM reservation_item WHERE line_item_id='line_stock_d'")).rows[0].n,0);
    assert.equal(Number((await pool.query("SELECT reserved_quantity FROM inventory_level WHERE id='level'")).rows[0].reserved_quantity),1);
+ });
+ await test('a shortage in one bundle component rolls back the whole reservation',async()=>{
+   await stockOrder('bundle');
+   await pool.query("UPDATE inventory_level SET stocked_quantity=2 WHERE id='level'");
+   await pool.query("INSERT INTO product_variant_inventory_item VALUES('stock_variant','unavailable_component',1,NULL)");
+   try {
+     assert.equal((await medusa.checkoutStockIssue('bundle')).code,'stock_unavailable');
+     assert.equal((await pool.query("SELECT count(*)::int n FROM reservation_item WHERE line_item_id='line_bundle'")).rows[0].n,0);
+     assert.equal(Number((await pool.query("SELECT reserved_quantity FROM inventory_level WHERE id='level'")).rows[0].reserved_quantity),1);
+   } finally {await pool.query("DELETE FROM product_variant_inventory_item WHERE inventory_item_id='unavailable_component'");}
+ });
+ await test('last unit: two COD buyers, mixed payment competition, idempotent retry and abandoned online hold',async()=>{
+   await pool.query("UPDATE inventory_level SET stocked_quantity=reserved_quantity+1");
+   for(const id of ['cod_left','cod_right','online_buyer']) await stockOrder(id);
+   const read=async id=>(await pool.query('SELECT * FROM "order" WHERE id=$1',[id])).rows[0];
+   load.stubModule('next/server',{NextResponse:Response,after:()=>{}});
+   load.stub('src/lib/checkout-order-access.ts',{checkoutOrderAccessError:async()=>null});
+   load.stub('src/lib/debug-controller/guards.ts',{getCheckoutGuardResponse:async()=>null});
+   load.stub('src/lib/checkout-order.ts',{loadCheckoutOrder:async id=>({order:await read(id)})});
+   load.stub('src/lib/medusa-admin.ts',{
+     convertDraftOrder:async id=>({ok:true,data:{order:(await pool.query("UPDATE \"order\" SET status='pending' WHERE id=$1 RETURNING *",[id])).rows[0]}}),
+     updateOrderMetadata:async(id,meta)=>({ok:!!(await pool.query('UPDATE "order" SET metadata=$2 WHERE id=$1',[id,meta])).rowCount})
+   });
+   await pool.query("UPDATE \"order\" SET status='draft',metadata=jsonb_build_object('payment_method','cod') WHERE id IN ('cod_left','cod_right')");
+   const route=load('src/app/api/checkout/cod/route.ts');
+   const confirm=id=>route.POST(new Request('http://localhost/api/checkout/cod',{method:'POST',body:JSON.stringify({medusaOrderId:id})}));
+   assert.equal(await medusa.checkoutStockIssue('online_buyer'),null);
+   assert.equal((await confirm('cod_left')).status,409);
+   assert.equal((await read('cod_left')).status,'draft');
+   await medusa.releaseOrderInventoryReservations('online_buyer');
+   const ids=['cod_left','cod_right'];
+   const responses=await Promise.all(ids.map(confirm));
+   assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);
+   const winner=ids[responses.findIndex(r=>r.ok)], loser=ids.find(id=>id!==winner);
+   assert.equal((await responses.find(r=>r.status===409).json()).code,'stock_unavailable');
+   assert.equal((await read(loser)).status,'draft');
+   assert.equal((await read(winner)).metadata.cod_status,'confirmed');
+   assert.equal((await confirm(winner)).status,200);
+   await pool.query("UPDATE product_variant SET allow_backorder=true WHERE id='stock_variant'");
+   try { assert.equal((await medusa.checkoutStockIssue('online_buyer')).status,409); }
+   finally { await pool.query("UPDATE product_variant SET allow_backorder=false WHERE id='stock_variant'"); }
+   assert.equal((await pool.query("SELECT count(*)::int n FROM reservation_item WHERE line_item_id=ANY($1)",[ids.map(id=>'line_'+id)])).rows[0].n,1);
  });
  await test('paid allocations survive price, vendor and metadata edits; shipping stays retained',async()=>{
    await order('frozen_order','frozen_customer');

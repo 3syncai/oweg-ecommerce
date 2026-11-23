@@ -33,13 +33,13 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const addCart = useAddToCart();
   const isAdding = addCart.isPending;
   const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null);
-  const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(product.variant_id);
+  const { data: sellerOffers, soldOut: sellersSoldOut, isLoading: sellerOffersLoading } = useSellerOffers(product.variant_id);
   const selectedSellerOffer = sellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? sellerOffers?.[0];
   const purchaseVariantId = selectedSellerOffer?.variant_id ?? product.variant_id;
   const displayPrice = selectedSellerOffer?.price ?? product.price;
   const sellerChoicePinned = Boolean(selectedSellerOffer);
   const selectedVariant = product.variants.find(variant => variant.id === purchaseVariantId);
-  const hasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : Boolean(selectedVariant && isVariantPurchasable(selectedVariant));
+  const hasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : Boolean(selectedVariant && (!sellersSoldOut || selectedVariant.manage_inventory === false) && isVariantPurchasable(selectedVariant));
   const showHealthCareAgeGate = productHasHealthCareCategory(product.categories);
 
   const handleAddToCart = async () => {
@@ -50,7 +50,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     }
 
     try {
-      await addCart.mutateAsync({ variant_id: purchaseVariantId, quantity: 1, seller_selected: sellerChoicePinned });
+      await addCart.mutateAsync({ variant_id: purchaseVariantId, quantity: 1, seller_selected: sellerChoicePinned, expected_flash_price: selectedSellerOffer?.flash_sale?.flash_sale_price });
       alert("Added to cart successfully!");
     } catch (error) {
       console.error("Failed to add to cart:", error);

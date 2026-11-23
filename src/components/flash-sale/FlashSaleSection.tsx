@@ -28,7 +28,7 @@ type FlashSaleProduct = {
     mrp?: number
     price?: number
   }
-  display_pricing?: { variant_id: string; price: number; mrp: number; from: boolean }
+  seller?: string
   variant_id?: string
   flash_sale_price?: number // Flash sale price in rupees
   original_price?: number // Original price in rupees
@@ -187,7 +187,7 @@ export function FlashSaleShowcase({ data, timeRemaining, showImageFallback = fal
           </div>
           <div ref={scrollRef} className={view === 'all' ? styles.grid : styles.track} role="region" aria-label={view === 'all' ? 'All flash sale products' : 'Flash Sale product carousel'} tabIndex={view === 'all' ? undefined : 0}>
             {data.products.map(product => (
-              <FlashSaleProductCard key={product.id} product={product} showImageFallback={showImageFallback} />
+              <FlashSaleProductCard key={product.variant_id ?? product.id} product={product} showImageFallback={showImageFallback} />
             ))}
           </div>
         </div>
@@ -203,7 +203,7 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
 
   // Get variant_id from product
-  const variantId = product.display_pricing?.variant_id || product.variant_id || product.variants?.[0]?.id || null
+  const variantId = product.variant_id || null
 
   // Defensive coercion: Postgres NUMERIC columns serialize as strings
   // ("900.00"), so `flash_sale_price` / `original_price` may arrive as
@@ -227,11 +227,11 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return '/placeholder-product.png'
   }
 
-  const price = toNumber(product.display_pricing?.price ?? product.flash_sale_price ?? product.metadata?.price)
-  const mrp = toNumber(product.display_pricing?.mrp ?? product.original_price ?? product.metadata?.mrp)
+  const price = toNumber(product.flash_sale_price ?? product.metadata?.price)
+  const mrp = toNumber(product.original_price)
   const discount = mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0
   const imageUrl = getProductImage()
-  const productHref = `/productDetail/${encodeURIComponent(product.id)}`
+  const productHref = `/productDetail/${encodeURIComponent(product.id)}?offer=${encodeURIComponent(variantId || "")}&deal=${price}`
 
   const isWishlisted = (() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
@@ -260,12 +260,13 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
       </div>
       <div className={styles.body}>
         <Link href={productHref} prefetch={false} className={styles.title}>{product.title}</Link>
+        {product.seller && <small className="break-words">{product.seller}</small>}
         <div className={styles.pricing}>
-          <span className={styles.price}>{product.display_pricing?.from && <span className={styles.from}>From </span>}{inr.format(price)}</span>
-          {mrp > price && <del>{inr.format(mrp)}</del>}
-          {discount > 0 && <span className={styles.discount}>{discount}% OFF</span>}
+          <span className={styles.price}>{inr.format(price)}</span>
+          {mrp > price && <del aria-label={`Regular price ${inr.format(mrp)}`}>Was {inr.format(mrp)}</del>}
+          {discount > 0 && <span className={styles.discount}>{discount}% OFF · Save {inr.format(mrp - price)}</span>}
         </div>
-        <ProductCardQuickActions variantId={variantId ?? undefined} selectionHref={product.variants?.length === 1 ? undefined : productHref} productName={product.title} isHovered={false} layout="inline" />
+        <ProductCardQuickActions variantId={variantId ?? undefined} expectedFlashPrice={price} productName={product.title} isHovered={false} layout="inline" />
       </div>
     </article>
   )

@@ -66,6 +66,13 @@ function OrderSuccessPageInner() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ medusaOrderId: refId }),
     });
+    if (res.status === 409) {
+      const issue = await res.json().catch(() => ({}));
+      setConfirmFailed(true);
+      setConfirmFailReason(issue.error || "This item is out of stock. Please review your cart.");
+      setPolling(false);
+      return null;
+    }
     if (!res.ok) return null;
     const data = (await res.json()) as { medusaOrderId?: string };
     return data.medusaOrderId || refId;
@@ -423,6 +430,8 @@ function OrderSuccessPageInner() {
   const isOrderComplete = confirmation.complete;
   const isPaid = isOrderComplete;
   const statusMessage = confirmation.cancelled ? "This order was cancelled. Check its details for the latest payment or refund status."
+    : isPaidOnline && order?.metadata?.checkout_stock_pending === true
+    ? "Payment received. We are checking stock for your order. Please do not pay again."
     : confirmFailed && !isOrderComplete
     ? confirmFailReason || "We couldn't confirm this order."
     : isCodPending

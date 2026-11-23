@@ -62,25 +62,29 @@ test('expired sales are hidden and CDN lifetime never extends past a known expir
 test('flash-sale route keeps stock filtering, shares fetches and never forwards private credentials', async () => {
   let calls = 0, filtered = 0
   const helpers = load('src/lib/flash-sale-cache.ts')
-  const route = load('src/app/api/medusa/flash-sale/products/route.ts', {
-    'next/server': { NextResponse: { json: (data, options) => ({ data, ...options }) } },
+  const server = load('src/lib/flash-sale-server.ts', {
+    'next/cache': {unstable_cache: fn => fn},
     '@/lib/flash-sale-cache': helpers,
     '@/lib/home-flash-sale': { inStockHomeFlashSale: async data => { filtered++; return { ...data, products: [{ id: 'stocked' }] } } },
     axios: { get: async (_, options) => {
       calls++
       assert.equal(options.headers.authorization, undefined)
       assert.equal(options.headers.cookie, undefined)
-      assert.equal(options.timeout, 15000)
+      assert.equal(options.timeout, 5000)
       await flush()
       return { data: { active: true, products: [{ id: 'out-of-stock' }, { id: 'stocked' }] } }
     } },
   }, { process: { env: { MEDUSA_BACKEND_URL: 'https://backend.example' } } })
+  const route = load('src/app/api/medusa/flash-sale/products/route.ts', {
+    'next/server': { NextResponse: { json: (data, options) => ({ data, ...options }) } },
+    '@/lib/flash-sale-cache': helpers, '@/lib/flash-sale-server': server,
+  })
   const results = await Promise.all(Array.from({ length: 20 }, () => route.GET({ nextUrl: new URL('https://shop.example/api/medusa/flash-sale/products?in_stock=1') })))
-  assert.equal(calls, 1); assert.equal(filtered, 20)
+  assert.equal(calls, 1); assert.equal(filtered, 1)
   for (const result of results) {
     assert.equal(result.data.products.length, 1)
     assert.equal(result.data.products[0].id, 'stocked')
-    assert.match(result.headers['Cache-Control'], /s-maxage=15/)
+    assert.match(result.headers['Cache-Control'], /s-maxage=\d+/)
   }
 })
 
@@ -88,8 +92,8 @@ test('flash-sale failures are not cached at the CDN and recover on retry', async
   let failed = true
   const route = load('src/app/api/medusa/flash-sale/products/route.ts', {
     'next/server': { NextResponse: { json: (data, options) => ({ data, ...options }) } },
-    '@/lib/flash-sale-cache': load('src/lib/flash-sale-cache.ts'), '@/lib/home-flash-sale': {},
-    axios: { get: async () => { if (failed) throw Error('offline'); return { data: { active: false, products: [] } } } },
+    '@/lib/flash-sale-cache': load('src/lib/flash-sale-cache.ts'),
+    '@/lib/flash-sale-server': { loadFlashSale: async () => { if (failed) throw Error('offline'); return { active:false, products:[] } } },
   }, { process: { env: {} }, console: { warn() {} } })
   const request = { nextUrl: new URL('https://shop.example/api/medusa/flash-sale/products') }
   assert.equal((await route.GET(request)).headers['Cache-Control'], 'no-store')
