@@ -16,8 +16,12 @@ export const FEE_GST_RATE = 18
 export const PLATFORM_FEE_RATE = 5
 export const COMMISSION_RATE = 2
 
-/** % of total listing price (C) */
-export const PARTNER_COMMISSION_RATE = 11
+/**
+ * Illustrative partner % for the price calculator only.
+ * Live vendor deductions use the NH catalog rate frozen on each order
+ * (0 when the product had no commission at order time).
+ */
+export const PARTNER_COMMISSION_RATE = 0
 export const PAYMENT_GATEWAY_RATE = 2
 
 /** % of item price basic (shown under taxes column) */

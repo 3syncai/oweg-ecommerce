@@ -21,6 +21,10 @@ import {
   getPartnerReferralForCustomer,
   isValidPartnerReferralCode,
 } from "./customer-groups"
+import {
+  fetchOrderCreatedAt,
+  resolveVendorOrderPartnerRate,
+} from "./catalog-partner-commission"
 
 export type { VendorSettlementRatesSnapshot }
 
@@ -134,16 +138,41 @@ export async function resolveLiveSettlementRates(
       getMarketplaceTaxRates(pool),
     ])
 
+  // Partner % is product-scoped (NH catalog) and frozen per order — never the
+  // legacy store-wide 11% default. Without an order context the live rate is 0.
   return {
     commission_rate,
     platform_fee_rate,
     cancellation_charge,
-    partner_rate: storeRates.partner_rate,
+    partner_rate: 0,
     service_gst_rate: storeRates.service_gst_rate,
     tcs_rate: taxRates.tcs_rate,
     tds_rate: taxRates.tds_rate,
     snapshotted_at: new Date().toISOString(),
   }
+}
+
+/**
+ * Partner cut for this vendor on this order: NH catalog rate(s) active at
+ * order place. 0 when the customer is not partner-linked, or when none of the
+ * ordered products had a commission rule at that time.
+ */
+export async function resolveOrderPartnerSettlementRate(params: {
+  orderId: string
+  vendorId: string
+  pool: Pool
+  partnerLinked: boolean
+  asOf?: Date | string | null
+}): Promise<number> {
+  if (!params.partnerLinked) return 0
+  const asOf =
+    params.asOf ?? (await fetchOrderCreatedAt(params.pool, params.orderId))
+  return resolveVendorOrderPartnerRate({
+    pool: params.pool,
+    orderId: params.orderId,
+    vendorId: params.vendorId,
+    asOf,
+  })
 }
 
 export async function listOrderVendorIdsFromItems(
@@ -224,6 +253,7 @@ export async function ensureOrderSettlementSnapshots(params: {
   const snapshots: Record<string, VendorSettlementRatesSnapshot> = {}
   let changed = false
   const partnerLinked = await isOrderCustomerPartnerLinked(orderId, pool)
+  const orderPlacedAt = await fetchOrderCreatedAt(pool, orderId)
 
   for (const vendorId of vendorIds) {
     const existing = readOrderSettlementRates(metadata, vendorId)
@@ -253,35 +283,49 @@ export async function ensureOrderSettlementSnapshots(params: {
     )
     const log = fromLog.rows[0]
     const live = await resolveLiveSettlementRates(vendorId, pool)
+    const catalogPartnerRate = await resolveOrderPartnerSettlementRate({
+      orderId,
+      vendorId,
+      pool,
+      partnerLinked,
+      asOf: orderPlacedAt,
+    })
+
+    // Prefer already-booked earnings partner % (historical truth). Otherwise
+    // freeze the NH catalog rate that was active at order place — never the
+    // store-wide 11% default, and never a rate created after the order.
+    const partner_rate = !partnerLinked
+      ? 0
+      : log?.partner_commission_rate != null
+        ? Number(log.partner_commission_rate)
+        : catalogPartnerRate
+
     const frozen: VendorSettlementRatesSnapshot = existing
       ? {
           ...existing,
           partner_linked: partnerLinked,
-          partner_rate: partnerLinked ? existing.partner_rate : 0,
+          partner_rate,
         }
       : {
-      ...live,
-      commission_rate:
-        log?.commission_rate == null ? live.commission_rate : Number(log.commission_rate),
-      platform_fee_rate:
-        log?.platform_fee_rate == null
-          ? live.platform_fee_rate
-          : Number(log.platform_fee_rate),
-      cancellation_charge:
-        log?.cancellation_fee == null
-          ? live.cancellation_charge
-          : Number(log.cancellation_fee),
-      partner_rate:
-        !partnerLinked
-          ? 0
-          : log?.partner_commission_rate == null
-          ? live.partner_rate
-          : Number(log.partner_commission_rate),
-      partner_linked: partnerLinked,
-      tcs_rate: log?.tcs_rate == null ? live.tcs_rate : Number(log.tcs_rate),
-      tds_rate: log?.tds_rate == null ? live.tds_rate : Number(log.tds_rate),
-      snapshotted_at: new Date().toISOString(),
-    }
+          ...live,
+          commission_rate:
+            log?.commission_rate == null
+              ? live.commission_rate
+              : Number(log.commission_rate),
+          platform_fee_rate:
+            log?.platform_fee_rate == null
+              ? live.platform_fee_rate
+              : Number(log.platform_fee_rate),
+          cancellation_charge:
+            log?.cancellation_fee == null
+              ? live.cancellation_charge
+              : Number(log.cancellation_fee),
+          partner_rate,
+          partner_linked: partnerLinked,
+          tcs_rate: log?.tcs_rate == null ? live.tcs_rate : Number(log.tcs_rate),
+          tds_rate: log?.tds_rate == null ? live.tds_rate : Number(log.tds_rate),
+          snapshotted_at: new Date().toISOString(),
+        }
 
     metadata = mergeVendorWorkflowMetadata(metadata, vendorId, {
       settlement_rates: frozen,
