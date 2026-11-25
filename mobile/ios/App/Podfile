@@ -20,7 +20,9 @@ end
 
 target 'App' do
   capacitor_pods
-  # Add your Pods here
+  # FCM on iOS: gives the app an FCM token (not a raw APNs token) so the
+  # server's Firebase Cloud Messaging sends reach iPhones.
+  pod 'FirebaseMessaging'
 end
 
 post_install do |installer|

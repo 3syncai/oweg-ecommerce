@@ -44,7 +44,7 @@ const config = {
       showSpinner: false,
     },
     StatusBar: {
-      style: "DARK",
+      style: "LIGHT",
       backgroundColor: "#fafbf7",
     },
     PushNotifications: {

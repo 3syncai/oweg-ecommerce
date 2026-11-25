@@ -173,35 +173,23 @@
 .mobileSearchChrome[data-search-expanded="true"] { overflow: visible; }
 
 @media (max-width: 767px) {
-  /* Keep the measured header height stable while exposing the page under the brand row. */
-  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"],
-  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] :global(.bg-header-bg),
-  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileHeaderSurface {
-    background: transparent;
-    border-color: transparent;
+  /* On the mobile home page the whole header slides away while scrolling down.
+     It used to leave the brand row pinned (transparent header + white brand
+     strip), which overlapped page content. The measured height is unaffected
+     by the transform, so layout does not jump. */
+  .mobileHomeHeader[data-mobile-home="true"] {
+    transition: transform 240ms ease-out;
+    will-change: transform;
+  }
+
+  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] {
+    transform: translateY(-100%);
     box-shadow: none;
-    backdrop-filter: none;
     pointer-events: none;
   }
-
-  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileSearchChrome {
-    visibility: hidden;
-  }
-
-  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileBrandRow {
-    position: relative;
-    isolation: isolate;
-    pointer-events: auto;
-  }
-
-  .mobileHomeHeader[data-mobile-home="true"][data-scroll-hidden="true"] .mobileBrandRow::before {
-    content: "";
-    position: absolute;
-    inset: -8px -16px 0;
-    z-index: -1;
-    background: white;
-    box-shadow: 0 2px 12px rgb(0 0 0 / 6%);
-  }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .mobileHomeHeader[data-mobile-home="true"] { transition: none; }
 }
 .mobileSuggestions {
   position: absolute;
