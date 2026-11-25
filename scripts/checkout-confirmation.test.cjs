@@ -23,6 +23,7 @@ test('capture alone never confirms a draft, cancelled or suppressed order', () =
   assert.equal(state.checkoutConfirmationState(order).complete, true);
 });
 test('COD needs persisted confirmation and placement; online uses persisted capture', () => {
+  assert.equal(state.checkoutConfirmationState({ ...order, payment_status: "captured", metadata: {checkout_stock_pending:true} }).complete, false);
   const cod = { ...order, payment_status: 'cod', metadata: { payment_method: 'cod' } };
   assert.equal(state.checkoutConfirmationState(cod).complete, false);
   assert.equal(state.checkoutConfirmationState({ ...cod, metadata: { ...cod.metadata, cod_status: 'confirmed' } }).complete, true);
@@ -58,7 +59,7 @@ test('summary reuses its authorized order instead of loading it twice', async ()
   const route = load('src/app/api/checkout/order-summary/route.ts', {
     'next/server': next,
     '@/lib/checkout-order-access': { loadAuthorizedCheckoutOrder: async () => { reads++; return { error: null, loaded: { isDraft: false, order } }; } },
-    '@/lib/medusa-admin': {}, '@/lib/shipping-rules': {},
+    '@/lib/medusa-admin': {}, '@/lib/shipping-rules': {}, '@/lib/cart-flash-prices': {},
     '@/lib/order-display-totals': { enrichOrderWithSummaryTotals: async o => { enrichments++; return o; }, normalizeOrderForCustomer: o => ({ ...o, display_totals: { grandTotal: 123.45 } }) },
   });
   const response = await route.GET({ url: 'http://qa/summary?orderId=order_qa' });

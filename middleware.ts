@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { isSafeRedirect } from "@/lib/auth-redirect"
 import { getDebugControllerSettings } from "@/lib/debug-controller/settings"
+import { isDebugControllerEnabled } from "@/lib/debug-controller/db"
 import { clientIpFromRequest, rateLimitOrNull } from "@/lib/simple-rate-limit"
 
 const GUARDED_AUTH_ROUTES = new Set(["/login", "/signup"])
@@ -18,12 +19,6 @@ const GUARDED_DEBUG_ROUTE_PREFIXES = [
   "/api/cleanup-payments",
   "/api/affiliate/debug-wallet",
 ]
-
-function isDebugControllerEnabled(): boolean {
-  // Production: require explicit opt-in. Dev/local always allowed.
-  if (process.env.NODE_ENV !== "production") return true
-  return process.env.ENABLE_DEBUG_CONTROLLER === "true"
-}
 
 function isDebugControllerPath(pathname: string) {
   return (

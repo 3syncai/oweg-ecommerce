@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { portalActivityHeaders } from "./activity-ip";
+
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -58,9 +60,11 @@ export async function proxyMedusaRequest(
   const headers = new Headers();
   req.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
-    if (STRIP_REQUEST_HEADERS.has(lower)) return;
+    if (STRIP_REQUEST_HEADERS.has(lower) || lower.startsWith("x-oweg-activity-") || lower === "x-oweg-portal") return;
     headers.set(key, value);
   });
+
+  for (const [name, value] of Object.entries(portalActivityHeaders(req.headers))) headers.set(name, value);
 
   const publishableKey =
     process.env.MEDUSA_PUBLISHABLE_KEY ||

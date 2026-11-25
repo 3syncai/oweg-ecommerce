@@ -66,3 +66,8 @@
   .countdown { grid-column: 1; grid-row: auto; max-width: 260px; }
   .arrows { grid-column: 1; }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(.imageLink, .title) { transition: opacity 140ms ease-out; }
+  :is(.imageLink, .title):active { opacity: .76; }
+}

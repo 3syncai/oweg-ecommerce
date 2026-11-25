@@ -23,9 +23,19 @@ export type CustomerReliabilityOrder = {
 }
 
 export type CustomerReliabilityRequest = {
+  id?: string
   order_id: string
   type?: string | null
   status?: string | null
+}
+
+/** Keep only return requests whose lines include this vendor's products (by request id). */
+export function filterReturnRequestsForVendorScope<T extends CustomerReliabilityRequest & { id?: string }>(
+  requests: T[],
+  ownedReturnRequestIds: Set<string>
+): T[] {
+  if (!ownedReturnRequestIds.size) return []
+  return requests.filter((request) => request.id && ownedReturnRequestIds.has(request.id))
 }
 
 export const customerReliabilityKey = (input: { customer_id?: string | null; email?: string | null }) =>

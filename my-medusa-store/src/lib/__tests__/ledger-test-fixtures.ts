@@ -1,6 +1,9 @@
 import type { LedgerRates } from "../vendor-ledger-settlement"
 
-/** Default Sheet4 rates used by OWEG production. */
+/**
+ * Example Sheet4 rates for formula regression tests.
+ * Live partner % is product-scoped (NH catalog) and frozen per order.
+ */
 export const DEFAULT_LEDGER_RATES: LedgerRates = {
   platform_rate: 5,
   commission_rate: 2,

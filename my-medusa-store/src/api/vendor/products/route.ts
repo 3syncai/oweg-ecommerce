@@ -50,33 +50,25 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     )
     const query = req.scope.resolve("query")
     const productsById = new Map<string, any>()
-    // Legacy dashboard/search callers still get all products, in bounded graph reads.
+    // List UI only needs card fields — avoid images.*/options/variants graph fan-out
+    // (was taking 15–40s per request on RDS).
+    const listFields = [
+      "id",
+      "title",
+      "handle",
+      "status",
+      "thumbnail",
+      "variants.id",
+      "variants.sku",
+      "metadata",
+      "created_at",
+      "updated_at",
+    ]
     for (let i = 0; i < selection.ids.length; i += 100) {
       const ids = selection.ids.slice(i, i + 100)
       const { data: products } = await query.graph({
         entity: "product",
-        fields: [
-          "id",
-          "title",
-          "subtitle",
-          "description",
-          "handle",
-          "status",
-          "thumbnail",
-          "images.*",
-          "metadata",
-          "created_at",
-          "updated_at",
-          "collection_id",
-          "type_id",
-          "variants.id",
-          "variants.title",
-          "variants.sku",
-          "variants.manage_inventory",
-          "options.*",
-          "tags.*",
-          "categories.id",
-        ],
+        fields: listFields,
         filters: { id: ids },
         pagination: { take: ids.length },
       })
@@ -85,9 +77,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         if (product.metadata?.vendor_id !== auth.vendor_id) continue
         productsById.set(product.id, {
           ...product,
-          variants: (product.variants || []).map((variant: any) => ({
-            ...variant, sku: publicVariantSku(product, variant),
-          })),
+          variants: (product.variants ?? []).map(variant => ({ ...variant, sku: publicVariantSku(product, variant) })),
         })
       }
     }

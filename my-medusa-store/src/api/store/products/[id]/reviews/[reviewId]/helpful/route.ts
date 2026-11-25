@@ -39,30 +39,22 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
     
     await client.connect()
 
-    // Get current helpful count
-    const currentResult = await client.query(
-      `SELECT helpful_count FROM product_review WHERE id = $1`,
-      [reviewId]
+    const result = await client.query(
+      `UPDATE product_review
+       SET helpful_count = (COALESCE(NULLIF(helpful_count, ''), '0')::bigint + 1)::text,
+           updated_at = NOW()
+       WHERE id = $1 AND product_id = $2 AND deleted_at IS NULL AND status = 'approved'
+       RETURNING helpful_count`,
+      [reviewId, productId]
     )
 
-    if (currentResult.rows.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ message: "Review not found" })
     }
 
-    const currentCount = parseInt(currentResult.rows[0].helpful_count || '0', 10)
-    const newCount = (currentCount + 1).toString()
-
-    // Update helpful count
-    await client.query(
-      `UPDATE product_review 
-       SET helpful_count = $1, updated_at = NOW() 
-       WHERE id = $2`,
-      [newCount, reviewId]
-    )
-
     return res.json({
       message: "Review marked as helpful",
-      helpful_count: newCount,
+      helpful_count: result.rows[0].helpful_count,
     })
   } catch (error: any) {
     console.error("Error marking review as helpful:", error)

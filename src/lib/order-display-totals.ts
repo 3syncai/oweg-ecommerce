@@ -198,6 +198,14 @@ export function normalizeOrderForCustomer(order: Record<string, unknown>): Recor
             (itemMetadata && typeof itemMetadata.variant_id === "string"
               ? itemMetadata.variant_id
               : undefined);
+          const product = variantRecord?.product as { id?: string; handle?: string } | undefined;
+          const productId =
+            (typeof record.product_id === "string" && record.product_id) ||
+            (typeof variantRecord?.product_id === "string" && variantRecord.product_id) ||
+            (typeof product?.id === "string" && product.id);
+          const productHandle =
+            (typeof record.product_handle === "string" && record.product_handle) ||
+            (typeof product?.handle === "string" && product.handle);
 
           return {
             id: record.id,
@@ -207,6 +215,8 @@ export function normalizeOrderForCustomer(order: Record<string, unknown>): Recor
             total: lineTotal,
             thumbnail: (record.thumbnail as string) || (record.image_url as string),
             ...(variantId ? { variant_id: variantId } : {}),
+            ...(productId ? { product_id: productId } : {}),
+            ...(productHandle ? { product_handle: productHandle } : {}),
             _itemId: itemId,
           };
         })

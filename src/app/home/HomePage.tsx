@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from 'next/image';
 import { ArrowUpRight, ChevronLeft, ChevronRight, MapPin, Pause, Play, UserRound } from 'lucide-react';
 import styles from './HomePage.module.css';
 import { useQuery } from '@tanstack/react-query';
 import { ProductCard } from '@/components/modules/ProductCard';
+import { useDeliveryLocation } from "@/contexts/DeliveryLocationProvider";
 import { useAuth } from '@/contexts/AuthProvider';
 import { normalizeBrandKey, resolveBrandLogo, getCollectionLogoUrl, getCollectionLogoScale } from '@/lib/brand-logos';
 import { BrandLogoImage, brandLogoFallbackHandler } from '@/components/modules/BrandLogoImage';
@@ -81,7 +83,7 @@ function ProductCarousel({
             <h2 className="oweg-title">{title}</h2>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {href && <Link href={href} className={styles.viewAll}>View all <ArrowUpRight size={14} /></Link>}
+            {href && <CategoryLink href={href} className={styles.viewAll}>View all <ArrowUpRight size={14} /></CategoryLink>}
             <button
               type="button"
               onClick={() => scroll('left')}
@@ -174,7 +176,7 @@ function BannerTile({
   className?: string;
 }) {
   return (
-    <Link
+    <CategoryLink
       href={href}
       aria-label={alt}
       className={`oweg-media group block w-full ${className}`}
@@ -188,7 +190,7 @@ function BannerTile({
         sizes={sizes}
         priority={priority}
       />
-    </Link>
+    </CategoryLink>
   );
 }
 
@@ -277,7 +279,7 @@ function HeroBanner() {
 
   return (
     <section
-      className={`${styles.hero} relative w-full overflow-hidden`}
+      className={`${styles.hero} relative w-full`}
       aria-roledescription="carousel"
       aria-label="Featured offers"
       onMouseEnter={() => setIsHovered(true)}
@@ -310,7 +312,7 @@ function HeroBanner() {
               }`}
               aria-hidden={!isActive}
             >
-              <Link href={slide.href} aria-label={slide.label} tabIndex={isActive ? 0 : -1} className="absolute inset-0 block">
+              <CategoryLink href={slide.href} aria-label={slide.label} tabIndex={isActive ? 0 : -1} className="absolute inset-0 block">
                 <picture>
                   <source media="(max-width: 767px)" srcSet={slide.mobileSrc} />
                   <Image
@@ -321,11 +323,11 @@ function HeroBanner() {
                     loading={idx === 0 ? 'eager' : 'lazy'}
                     fetchPriority={idx === 0 ? 'high' : 'auto'}
                     onLoad={() => setHeroReady(true)}
-                    className="object-contain object-center"
+                    className="object-contain object-top"
                     sizes="100vw"
                   />
                 </picture>
-              </Link>
+              </CategoryLink>
             </div>
           );
         })}
@@ -414,7 +416,7 @@ function CategoryStrip() {
         </div>
         <div className={styles.categoryGrid} role="region" aria-label="Shop subcategories" tabIndex={0}>
           {HOME_SUBCATEGORIES.map((cat) => (
-            <Link
+            <CategoryLink
               key={cat.href}
               href={cat.href}
               prefetch={false}
@@ -427,7 +429,7 @@ function CategoryStrip() {
                 alt={cat.title} width={1145} height={1536} loading="lazy" decoding="async"
                 sizes="(max-width: 639px) 72px, 104px" className={styles.categoryArtwork}
                 style={cat.artworkScale ? { transform: `scale(${cat.artworkScale})` } : undefined} />
-            </Link>
+            </CategoryLink>
           ))}
         </div>
       </div>
@@ -451,6 +453,8 @@ type HomeFeedPayload = {
   meta?: { categoriesTried: number; categoriesWithProducts: number; totalProducts: number };
 };
 
+const subscribeToHydration = () => () => {};
+
 export default function HomePage({
   initialFeed,
   sectionsOnly = false,
@@ -459,28 +463,14 @@ export default function HomePage({
   sectionsOnly?: boolean;
 }) {
   const { customer } = useAuth();
-  const [placeName, setPlaceName] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem('oweg_pincode_place') || null;
-  });
+  const { pincode, choosePincode } = useDeliveryLocation();
+  // The location provider can restore storage before this streamed section hydrates.
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
+  const showPincodePrompt = !hydrated || !pincode;
+  const showSignInPrompt = !hydrated || !customer;
   const [placeLoading, setPlaceLoading] = useState(false);
-  const [pincode, setPincode] = useState('');
   const [pinInput, setPinInput] = useState('');
-
-  useEffect(() => {
-    const hydratePlace = async () => {
-      if (pincode && !placeName) {
-        const place = await fetchPlaceName(pincode);
-        if (place) {
-          setPlaceName(place);
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('oweg_pincode_place', place);
-          }
-        }
-      }
-    };
-    void hydratePlace();
-  }, [pincode, placeName]);
+  const [pinError, setPinError] = useState('');
 
   const homeFeedQuery = useQuery({
     queryKey: ['home-feed'],
@@ -627,19 +617,6 @@ export default function HomePage({
         : null;
   const displayError = errorMessage;
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('oweg_pincode');
-    if (stored) {
-      setPincode(stored);
-      setPinInput(stored);
-    }
-    const storedPlace = window.localStorage.getItem('oweg_pincode_place');
-    if (storedPlace) {
-      setPlaceName(storedPlace);
-    }
-  }, []);
-
   const fetchPlaceName = async (pin: string) => {
     try {
       setPlaceLoading(true);
@@ -657,18 +634,14 @@ export default function HomePage({
 
   const handlePinSubmit = async () => {
     const trimmed = pinInput.trim();
-    if (!trimmed) return;
-    setPincode(trimmed);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('oweg_pincode', trimmed);
+    if (!/^[1-9]\d{5}$/.test(trimmed)) {
+      setPinError('Enter a valid six-digit pincode.');
+      return;
     }
+    setPinError('');
     const place = await fetchPlaceName(trimmed);
-    if (place) {
-      setPlaceName(place);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('oweg_pincode_place', place);
-      }
-    }
+    if (place) choosePincode(trimmed, place);
+    else setPinError('Could not look up that pincode. Please try again.');
   };
 
   const Content = sectionsOnly ? 'div' : 'main';
@@ -696,10 +669,10 @@ export default function HomePage({
           </div>
         </section>
 
-        {(!pincode || !customer) && (
+        {(showPincodePrompt || showSignInPrompt) && (
           <section className="oweg-section-tight">
             <div className="oweg-container grid gap-3 sm:gap-4 md:grid-cols-2">
-              {!pincode ? (
+              {showPincodePrompt ? (
                 <div className={`oweg-surface-card p-4 sm:p-5 ${styles.deliveryCard}`}>
                   <p className="text-sm font-semibold text-[var(--oweg-ink)]">
                     Share your pincode for faster delivery by local sellers
@@ -720,18 +693,19 @@ export default function HomePage({
                     <button
                       type="button"
                       onClick={handlePinSubmit}
+                      disabled={placeLoading}
                       className={`oweg-tap ${styles.primaryLink}`}
                     >
                       Submit
                     </button>
                   </div>
                   {placeLoading ? (
-                    <p className="mt-2 text-xs text-[var(--oweg-ink-muted)]">Checking serviceability...</p>
-                  ) : null}
+                    <p role="status" className="mt-2 text-xs text-[var(--oweg-ink-muted)]">Looking up your area…</p>
+                  ) : pinError ? <p role="alert" className="mt-2 text-xs text-red-700">{pinError}</p> : null}
                 </div>
               ) : null}
 
-              {!customer && (
+              {showSignInPrompt && (
                 <div className="oweg-surface-card flex items-center gap-3 p-4 sm:gap-4 sm:p-5">
                   <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[var(--oweg-green)] text-white">
                     <UserRound className="h-6 w-6" />
@@ -879,7 +853,12 @@ export default function HomePage({
 
 // Client interactivity for hero/categories never waits for the product feed.
 export function HomeShell() {
-  return <section className={styles.home} aria-label="Storefront highlights"><HeroBanner /><CategoryStrip /></section>;
+  return (
+    <section className={styles.home} aria-label="Storefront highlights">
+      <HeroBanner />
+      <CategoryStrip />
+    </section>
+  );
 }
 export function HomeFeedSkeleton() {
   return <div className="oweg-container" role="status" aria-label="Loading products" style={{ minHeight: 420 }}><ProductCarousel title="Popular picks" products={[]} loading /></div>;

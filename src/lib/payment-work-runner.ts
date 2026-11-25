@@ -1,6 +1,6 @@
 import { getPool } from "@/lib/wallet-ledger";
 import { claimPaymentWork,enqueuePaymentWork,finishPaymentWork,transaction,type PaymentWork } from "@/lib/payment-reliability";
-import { ensurePlacedOrderFulfillmentReady } from "@/lib/medusa-payment";
+import { ensurePlacedOrderFulfillmentReady, releaseOrderInventoryReservations } from "@/lib/medusa-payment";
 import { runPostConvertCheckoutSideEffects,loadCheckoutOrder,markCheckoutPaymentFailed } from "@/lib/checkout-order";
 import { logPendingCoinsForOrder,creditPendingCoinsForOrder } from "@/lib/customer-affiliate-coins";
 import { updateOrderMetadata } from "@/lib/medusa-admin";
@@ -8,7 +8,7 @@ import { fetchRazorpayOrderPayments } from "@/lib/razorpay";
 import { recoverRazorpayCapture } from "@/lib/razorpay-capture-recover";
 import { settleReturnEarnings } from "../../my-medusa-store/src/lib/return-earnings-settlement";
 import {finalizeCoinSpendForOrder} from "@/lib/wallet-coin-order";
-import {releaseCheckoutCoins} from "@/lib/payment-reliability";
+import {releaseCheckoutCoins,withPaymentCoordination} from "@/lib/payment-reliability";
 import {consumeOweg10Reservation,syncOweg10ConsumedCustomerMetadata} from "@/lib/oweg10";
 
 export async function handleWork(job:PaymentWork) {
@@ -36,6 +36,10 @@ export async function handleWork(job:PaymentWork) {
    }
    await runPostConvertCheckoutSideEffects(job.aggregate_id,meta);
    const ready=await ensurePlacedOrderFulfillmentReady(job.aggregate_id);
+   if(meta.payment_method!=="cod" && (meta.checkout_stock_pending === true || !ready.reservations.success)) {
+     const updated = await updateOrderMetadata(job.aggregate_id, {checkout_stock_pending: !ready.reservations.success});
+     if (!updated.ok) throw new Error('inventory_status_update_failed');
+   }
    if(!ready.shipping.success||!ready.reservations.success)throw new Error('fulfillment_readiness_incomplete');
    await logPendingCoinsForOrder(job.aggregate_id);
    // A return may finish while this job is waiting for inventory or a process restart.
@@ -129,6 +133,14 @@ export async function reconcileUnrecordedCaptures(limit=5) {
      AND (metadata->>'razorpay_payment_status'='captured' OR metadata->>'cod_status'='confirmed')
      AND metadata->>'payment_reliability_version'='1'
      AND created_at>now()-interval '30 days' ON CONFLICT DO NOTHING`);
+ // Recover a COD hold if the server stopped between reservation and confirmation.
+ const abandonedCod = await pool.query(`SELECT o.id FROM "order" o WHERE o.deleted_at IS NULL
+   AND o.metadata @> '{"payment_method":"cod","checkout_stock_secured":true}'
+   AND COALESCE(o.metadata->>'cod_status','') <> 'confirmed'
+   AND o.updated_at < now()-interval '45 minutes' ORDER BY o.updated_at LIMIT 10`);
+ for (const order of abandonedCod.rows) {
+   await withPaymentCoordination(pool, 'cod-confirm:'+order.id, () => releaseOrderInventoryReservations(order.id));
+ }
  const idle=(await pool.query(`SELECT h.order_id FROM checkout_coin_reservation h JOIN "order" o ON o.id=h.order_id
    WHERE h.state='held' AND h.created_at<now()-interval '45 minutes'
      AND o.metadata->>'razorpay_order_id' IS NULL AND COALESCE(o.metadata->>'cod_status','')<>'confirmed' LIMIT 10`)).rows;

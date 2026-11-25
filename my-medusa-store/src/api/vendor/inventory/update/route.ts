@@ -1,4 +1,5 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
+import { checkRateLimit } from "../../../../lib/simple-rate-limit"
 import { Modules } from "@medusajs/framework/utils"
 
 import { requireApprovedVendor } from "../../_lib/guards"
@@ -16,18 +17,21 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
 
         const vendorId = auth.vendor_id
 
+        const actor = (req as MedusaRequest & {vendor_auth?:{sub:string}}).vendor_auth?.sub || vendorId
+        const limit = checkRateLimit({key:"vendor-stock-update:"+actor,limit:120,windowMs:60000})
+        if (!limit.allowed) return res.set("Retry-After",String(limit.retryAfterSec)).status(429).json({success:false,message:"Too many stock updates. Try again shortly."})
         const body = (req as any).body || {}
         const { variant_id, quantity } = body
 
-        if (!variant_id || typeof quantity !== 'number' || Number.isNaN(quantity)) {
+        if (!variant_id || typeof quantity !== 'number' || !Number.isSafeInteger(quantity) || quantity < 0) {
             return res.status(400).json({
                 success: false,
-                message: "variant_id and quantity are required"
+                message: "Choose a variant and enter a non-negative whole stock quantity."
             })
         }
 
         // Stock quantity must never go below zero
-        const safeQuantity = Math.max(0, Math.floor(quantity))
+        const safeQuantity = quantity
 
         console.log(`📦 Updating inventory for variant ${variant_id} to ${safeQuantity}`)
 

@@ -151,10 +151,37 @@ function normalizeGenericTrackingPayload(payload: any, provider: string, partner
   })
 }
 
+function shiprocketTrackingEnabled() {
+  // Easy Ship is ITL in this deployment; don't poll Shiprocket unless explicitly selected
+  // as the Easy Ship provider.
+  return String(process.env.EASY_SHIP_PROVIDER || "itl").toLowerCase() === "shiprocket"
+}
+
 export async function trackSelfShipment({ courierPartnerName, awb, trackingSource }: TrackInput) {
   const partner = String(courierPartnerName || "").trim()
   const trackingId = String(awb || "").trim()
   const fallbackTrackingUrl = getKnownTrackingUrl(partner, trackingId)
+  // Treat unset / Shiprocket-selected as manual when Shiprocket is not the active Easy Ship provider
+  const effectiveSource =
+    trackingSource === "shiprocket" && !shiprocketTrackingEnabled()
+      ? "manual"
+      : trackingSource || "manual"
+
+  // Manual / URL-only mode: never poll Shiprocket or carrier APIs — vendor confirms delivery.
+  if (effectiveSource === "manual") {
+    return {
+      ...summarizeTrackingPayload({
+        provider: "self",
+        courierPartnerName: partner || null,
+        awb: trackingId || null,
+        status: "in_transit",
+      }),
+      tracking_url: fallbackTrackingUrl,
+      source: "manual" as const,
+      message:
+        "Manual tracking: carrier polling disabled. Use Mark Delivered when the package arrives.",
+    }
+  }
 
   if (!partner || !trackingId) {
     return summarizeTrackingPayload({
@@ -184,9 +211,8 @@ export async function trackSelfShipment({ courierPartnerName, awb, trackingSourc
     }
   }
 
-  // Amazon-style: prefer explicit Shiprocket source, else try configured carrier APIs,
-  // then fall back to Shiprocket aggregator for any AWB (common for Indian sellers).
-  if (trackingSource === "shiprocket") {
+  // Shiprocket only when Easy Ship provider is Shiprocket AND vendor chose it — never silent fallback.
+  if (effectiveSource === "shiprocket") {
     try {
       return await tryShiprocket()
     } catch (error: any) {
@@ -210,21 +236,17 @@ export async function trackSelfShipment({ courierPartnerName, awb, trackingSourc
 
   const provider = findProviderConfig(partner)
   if (!provider) {
-    try {
-      return await tryShiprocket()
-    } catch {
-      return {
-        ...summarizeTrackingPayload({
-          provider: "self",
-          courierPartnerName: partner,
-          awb: trackingId,
-          status: "not_shipped",
-          error:
-            "Live carrier API not configured for this courier yet. After RTD the order is marked Shipped; delivery updates need Shiprocket/carrier credentials or admin mark-delivered.",
-        }),
-        tracking_url: fallbackTrackingUrl,
-        source: "not_configured",
-      }
+    return {
+      ...summarizeTrackingPayload({
+        provider: "self",
+        courierPartnerName: partner,
+        awb: trackingId,
+        status: "in_transit",
+      }),
+      tracking_url: fallbackTrackingUrl,
+      source: "not_configured" as const,
+      message:
+        "No live carrier API for this courier. Tracking URL only — use Mark Delivered when the package arrives.",
     }
   }
 

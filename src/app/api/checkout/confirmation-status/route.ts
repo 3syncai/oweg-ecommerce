@@ -18,6 +18,7 @@ export async function GET(req: Request) {
     metadata: {
       payment_method: metadata.payment_method, cod_status: metadata.cod_status,
       razorpay_payment_status: metadata.razorpay_payment_status,
+      checkout_stock_pending: metadata.checkout_stock_pending,
       checkout_duplicate_suppressed: metadata.checkout_duplicate_suppressed,
     },
   } }, { headers: { "Cache-Control": "private, no-store" } });

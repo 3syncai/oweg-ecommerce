@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import { markOrderFulfillmentAsDeliveredWorkflow } from "@medusajs/medusa/core-flows"
+import { recordTrackingEmail } from "../../../../../services/order-email/outbox"
 import { Pool } from "pg"
 import {
   deriveVendorStage,
@@ -103,12 +104,53 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       })
     }
 
-    // Mark undelivered Medusa fulfillments as delivered
+    // Mark ONLY the target vendor(s)' Medusa fulfillments as delivered.
+    // Each vendor workflow records its own medusa_fulfillment_id; a sibling
+    // vendor's package must never be flipped to delivered by this call.
     const fulfillmentResults: Array<{ id: string; ok: boolean; message?: string }> = []
+    const skippedFulfillments: Array<{ id: string; reason: string }> = []
     if (!metadataOnly) {
-      const fulfillments = (order.fulfillments || []).filter(
-        (f: any) => f?.id && !f?.canceled_at && !f?.delivered_at
+      const orderFulfillments = (order.fulfillments || []).filter(
+        (f: any) => f?.id && !f?.canceled_at
       )
+
+      const workflowFulfillmentId = (vendorId: string): string =>
+        String((workflows[vendorId] as any)?.medusa_fulfillment_id || "").trim()
+
+      // Every fulfillment claimed by any vendor workflow on the order (not just the target).
+      const mappedFulfillmentIds = new Set<string>(
+        Object.keys(workflows).map(workflowFulfillmentId).filter(Boolean)
+      )
+      // Fulfillments owned by the vendor(s) being marked delivered.
+      const targetFulfillmentIds = new Set<string>(
+        vendorIds.map(workflowFulfillmentId).filter(Boolean)
+      )
+
+      // Legacy single-vendor order whose only fulfillment was never mapped to a workflow.
+      const allOrderVendorIds = new Set<string>([
+        ...Object.keys(workflows),
+        ...vendorProductIds.keys(),
+      ])
+      const singleVendorOrphanId =
+        allOrderVendorIds.size === 1 &&
+        vendorIds.length === 1 &&
+        orderFulfillments.length === 1 &&
+        !mappedFulfillmentIds.has(orderFulfillments[0].id)
+          ? String(orderFulfillments[0].id)
+          : null
+
+      const fulfillments: any[] = []
+      for (const f of orderFulfillments) {
+        if (f.delivered_at) continue
+        if (targetFulfillmentIds.has(f.id) || f.id === singleVendorOrphanId) {
+          fulfillments.push(f)
+        } else if (mappedFulfillmentIds.has(f.id)) {
+          skippedFulfillments.push({ id: f.id, reason: "belongs to another vendor" })
+        } else {
+          skippedFulfillments.push({ id: f.id, reason: "no vendor mapping" })
+        }
+      }
+
       for (const fulfillment of fulfillments) {
         try {
           await markOrderFulfillmentAsDeliveredWorkflow(req.scope).run({
@@ -166,6 +208,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
     }
 
     await orderModuleService.updateOrders(orderId, { metadata })
+    await recordTrackingEmail(orderId, "order_delivered")
 
     let earnings: any = null
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })
@@ -218,6 +261,7 @@ export async function POST(req: MedusaRequest, res: MedusaResponse) {
       order_id: orderId,
       vendor_ids: vendorIds,
       fulfillments: fulfillmentResults,
+      skipped_fulfillments: skippedFulfillments,
       earnings,
       order: refreshed.data?.[0] || null,
     })

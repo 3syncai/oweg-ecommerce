@@ -2,6 +2,7 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { requireApprovedVendor } from "../_lib/guards"
 import { Modules } from "@medusajs/framework/utils"
 import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
+import { sumVendorLineTotal } from "../../../lib/vendor-order-workflow"
 
 // CORS headers helper
 function setCorsHeaders(res: MedusaResponse) {
@@ -33,8 +34,8 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     })
     const vendorProductIds = new Set(vendorProducts.map((p: any) => p.id))
 
-    // Get vendor orders
-    const allOrders = await orderModuleService.listOrders({})
+    // Get vendor orders (include line items for vendor-scoped revenue)
+    const allOrders = await orderModuleService.listOrders({}, { relations: ["items"] })
     const vendorOrders = filterVendorVisibleOrders(
       allOrders.filter((order: any) => {
         const items = order.items || []
@@ -48,16 +49,12 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     // Calculate stats
     const totalProducts = vendorProducts.length
     const totalOrders = vendorOrders.length
-    
-    // Calculate total revenue (sum of order totals)
+
+    // Calculate total revenue (sum of this vendor's line totals only)
     let totalRevenue = 0
+    const vendorProductIdList = vendorProducts.map((p: any) => p.id)
     vendorOrders.forEach((order: any) => {
-      const total = order.total || 0
-      if (typeof total === 'number') {
-        totalRevenue += total
-      } else if (total && typeof total === 'object' && total.amount) {
-        totalRevenue += total.amount
-      }
+      totalRevenue += sumVendorLineTotal(order, vendorProductIdList)
     })
 
     // Get recent orders (last 5)
@@ -72,7 +69,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         id: order.id,
         display_id: order.display_id || order.id,
         email: order.email,
-        total: order.total,
+        total: sumVendorLineTotal(order, vendorProductIdList),
         status: order.status,
         created_at: order.created_at,
       }))

@@ -1,3 +1,5 @@
+import { customerShipping } from "../../my-medusa-store/src/lib/storefront-shipping";
+export { SHIPPING_CHARGE_RUPEES, FREE_SHIPPING_THRESHOLD_RUPEES } from "../../my-medusa-store/src/lib/storefront-shipping";
 const MAHARASHTRA_ALIASES = new Set([
   "maharashtra",
   "mh",
@@ -6,8 +8,6 @@ const MAHARASHTRA_ALIASES = new Set([
   "maharashtra state",
 ]);
 
-export const SHIPPING_CHARGE_RUPEES = 50;
-export const FREE_SHIPPING_THRESHOLD_RUPEES = 999;
 
 function normalizeState(state?: string | null): string {
   if (!state) return "";
@@ -26,8 +26,5 @@ export function isMaharashtra(state?: string | null): boolean {
 }
 
 export function calculateStatewiseShipping(subtotal: number, _state?: string | null): number {
-  if (!Number.isFinite(subtotal) || subtotal <= 0) return 0
-  // ₹50 is charged only when the customer's cart is below the free-shipping threshold.
-  if (subtotal >= FREE_SHIPPING_THRESHOLD_RUPEES) return 0
-  return SHIPPING_CHARGE_RUPEES
+  return customerShipping(subtotal)
 }

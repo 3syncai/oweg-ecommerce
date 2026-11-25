@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { CircleAlert, WifiOff } from "lucide-react";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 type RouteErrorProps = {
   title?: string;
@@ -16,22 +18,24 @@ export default function RouteError({
   error,
   reset,
 }: RouteErrorProps) {
+  const online = useOnlineStatus();
   useEffect(() => {
     console.error(error);
   }, [error]);
 
   return (
     <div className="mx-auto flex min-h-[50vh] max-w-lg flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-rose-50 text-3xl">
-        ⚠️
+      <div className="mb-5 grid size-14 place-items-center rounded-2xl bg-amber-50 text-amber-900">
+        {online ? <CircleAlert size={24} aria-hidden="true" /> : <WifiOff size={24} aria-hidden="true" />}
       </div>
-      <h1 className="mb-3 text-2xl font-bold text-slate-900">{title}</h1>
-      <p className="mb-8 text-sm leading-relaxed text-slate-600">{description}</p>
+      <h1 className="mb-3 text-2xl font-bold text-[#17372f]">{online ? title : "You’re offline"}</h1>
+      <p className="mb-6 text-sm leading-relaxed text-slate-600">{online ? description : "Reconnect to the internet, then try loading this page again."}</p>
       <div className="flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
           onClick={reset}
-          className="rounded-lg bg-[#7AC943] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#6bb838]"
+          disabled={!online}
+          className="min-h-11 rounded-xl bg-[#155344] px-6 py-3 text-sm font-semibold text-white hover:bg-[#103e34] disabled:opacity-60"
         >
           Try again
         </button>

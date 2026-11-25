@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto"
+import { addAbortListener } from "node:events"
 import * as net from "node:net"
 import * as tls from "node:tls"
 
@@ -6,6 +7,12 @@ import { hasPasswordResetMailerConfig, passwordResetConfig } from "./config"
 import { normalizeEmail } from "./crypto"
 
 type SmtpSocket = net.Socket | tls.TLSSocket
+
+export class SmtpReplyError extends Error {
+  constructor(public readonly replyCode: number, message: string) {
+    super(message)
+  }
+}
 
 function sanitizeHeaderValue(value: string) {
   if (!value || value.includes("\r") || value.includes("\n")) {
@@ -140,13 +147,19 @@ async function sendCommand(
   ])
 
   if (!expectedCodes.includes(response.code)) {
-    throw new Error(`SMTP command failed: ${response.message}`)
+    throw new SmtpReplyError(response.code, `SMTP command failed: ${response.message}`)
   }
 
   return response
 }
 
-async function connectSecureSocket() {
+function bindSmtpDeadline(socket: SmtpSocket, signal?: AbortSignal) {
+  if (!signal) return
+  const subscription = addAbortListener(signal, () => socket.destroy())
+  socket.once("close", () => subscription[Symbol.dispose]())
+}
+
+async function connectSecureSocket(signal?: AbortSignal) {
   return await new Promise<tls.TLSSocket>((resolve, reject) => {
     const socket = tls.connect({
       host: passwordResetConfig.smtp.host,
@@ -156,13 +169,15 @@ async function connectSecureSocket() {
     })
 
     socket.setTimeout(30000)
+    bindSmtpDeadline(socket, signal)
+    socket.once("close", () => reject(new Error("SMTP connection closed")))
     socket.once("secureConnect", () => resolve(socket))
     socket.once("error", reject)
     socket.once("timeout", () => reject(new Error("SMTP connection timed out")))
   })
 }
 
-async function upgradeToTls(socket: net.Socket) {
+async function upgradeToTls(socket: net.Socket, signal?: AbortSignal) {
   return await new Promise<tls.TLSSocket>((resolve, reject) => {
     const secureSocket = tls.connect({
       socket,
@@ -171,13 +186,15 @@ async function upgradeToTls(socket: net.Socket) {
     })
 
     secureSocket.setTimeout(30000)
+    bindSmtpDeadline(secureSocket, signal)
+    secureSocket.once("close", () => reject(new Error("SMTP connection closed")))
     secureSocket.once("secureConnect", () => resolve(secureSocket))
     secureSocket.once("error", reject)
     secureSocket.once("timeout", () => reject(new Error("SMTP TLS upgrade timed out")))
   })
 }
 
-async function connectStartTlsSocket() {
+async function connectStartTlsSocket(signal?: AbortSignal) {
   const socket = await new Promise<net.Socket>((resolve, reject) => {
     const nextSocket = net.connect({
       host: passwordResetConfig.smtp.host,
@@ -185,6 +202,8 @@ async function connectStartTlsSocket() {
     })
 
     nextSocket.setTimeout(30000)
+    bindSmtpDeadline(nextSocket, signal)
+    nextSocket.once("close", () => reject(new Error("SMTP connection closed")))
     nextSocket.once("connect", () => resolve(nextSocket))
     nextSocket.once("error", reject)
     nextSocket.once("timeout", () => reject(new Error("SMTP connection timed out")))
@@ -193,33 +212,25 @@ async function connectStartTlsSocket() {
   return socket
 }
 
-async function openSmtpConnection() {
-  if (passwordResetConfig.smtp.secure) {
-    const socket = await connectSecureSocket()
+async function openSmtpConnection(signal?: AbortSignal) {
+  const implicitTls = passwordResetConfig.smtp.secure
+  let socket = implicitTls ? await connectSecureSocket(signal) : await connectStartTlsSocket(signal)
+  try {
     const greeting = await waitForResponse(socket)
-
     if (greeting.code !== 220) {
-      socket.destroy()
-      throw new Error(`SMTP greeting failed: ${greeting.message}`)
+      throw new SmtpReplyError(greeting.code, `SMTP greeting failed: ${greeting.message}`)
     }
-
+    if (!implicitTls) {
+      await sendCommand(socket, `EHLO ${passwordResetConfig.smtp.host}`, [250])
+      await sendCommand(socket, "STARTTLS", [220])
+      socket = await upgradeToTls(socket, signal)
+      await sendCommand(socket, `EHLO ${passwordResetConfig.smtp.host}`, [250])
+    }
     return socket
-  }
-
-  const socket = await connectStartTlsSocket()
-  const greeting = await waitForResponse(socket)
-
-  if (greeting.code !== 220) {
+  } catch (error) {
     socket.destroy()
-    throw new Error(`SMTP greeting failed: ${greeting.message}`)
+    throw error
   }
-
-  await sendCommand(socket, `EHLO ${passwordResetConfig.smtp.host}`, [250])
-  await sendCommand(socket, "STARTTLS", [220])
-
-  const secureSocket = await upgradeToTls(socket)
-  await sendCommand(secureSocket, `EHLO ${passwordResetConfig.smtp.host}`, [250])
-  return secureSocket
 }
 
 function buildMimeMessage(input: {
@@ -230,6 +241,7 @@ function buildMimeMessage(input: {
   previewText: string
   text: string
   html: string
+  messageId?: string
 }) {
   const domain = input.fromEmail.split("@")[1] || "localhost"
   const boundary = `oweg-reset-${randomUUID()}`
@@ -243,7 +255,7 @@ function buildMimeMessage(input: {
     `To: ${input.to}`,
     `Subject: ${input.subject}`,
     `Date: ${new Date().toUTCString()}`,
-    `Message-ID: <${randomUUID()}@${domain}>`,
+    `Message-ID: <${input.messageId ?? randomUUID()}@${domain}>`,
     "Auto-Submitted: auto-generated",
     "Content-Language: en",
     "MIME-Version: 1.0",
@@ -363,9 +375,15 @@ type TransactionalEmailInput = {
   previewText?: string
   /** Trusted server-rendered email template; callers must escape dynamic values. */
   htmlBody?: string
+  textBody?: string
 }
 
-export async function sendTransactionalEmail(input: TransactionalEmailInput) {
+type DeliveryOptions = {
+  messageId: string
+  beforeData: () => Promise<void>
+}
+
+export async function sendTransactionalEmail(input: TransactionalEmailInput, options?: DeliveryOptions) {
   if (!hasPasswordResetMailerConfig()) {
     throw new Error("SMTP configuration is incomplete")
   }
@@ -424,9 +442,9 @@ export async function sendTransactionalEmail(input: TransactionalEmailInput) {
     fromName,
     subject,
     previewText,
-    text,
+    text: input.textBody ?? text,
     html,
-  })
+  }, options)
 }
 
 async function deliverMimeMessage(input: {
@@ -437,7 +455,7 @@ async function deliverMimeMessage(input: {
   previewText: string
   text: string
   html: string
-}) {
+}, options?: DeliveryOptions) {
   const message = escapeDataBody(
     buildMimeMessage({
       fromName: input.fromName,
@@ -447,10 +465,11 @@ async function deliverMimeMessage(input: {
       previewText: input.previewText,
       text: input.text,
       html: input.html,
+      messageId: options?.messageId,
     })
   )
 
-  const socket = await openSmtpConnection()
+  const socket = await openSmtpConnection(options ? AbortSignal.timeout(25_000) : undefined)
 
   try {
     if (passwordResetConfig.smtp.secure) {
@@ -471,12 +490,14 @@ async function deliverMimeMessage(input: {
     await sendCommand(socket, `MAIL FROM:<${input.fromEmail}>`, [250])
     await sendCommand(socket, `RCPT TO:<${input.to}>`, [250, 251])
     await sendCommand(socket, "DATA", [354])
+    await options?.beforeData()
+    if (socket.destroyed) throw new Error("SMTP connection closed")
     const [delivery] = await Promise.all([
       waitForResponse(socket),
       writeLine(socket, `${message}\r\n.\r\n`),
     ])
     if (delivery.code !== 250) {
-      throw new Error(`SMTP delivery failed: ${delivery.message}`)
+      throw new SmtpReplyError(delivery.code, `SMTP delivery failed: ${delivery.message}`)
     }
 
     try {

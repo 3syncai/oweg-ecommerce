@@ -1,4 +1,5 @@
 import { enqueueNotification } from "../../../../services/interakt/outbox"
+import { enqueueOrderEmail } from "../../../../services/order-email/outbox"
 import { itlNotificationEvent } from "../../../../services/interakt/interakt.service"
 import { shippingWebhookAuthError } from "../../../../lib/shipping-webhook-auth"
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
@@ -116,21 +117,37 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
     forceDummyItlStatus(awb, transition.status, { reason })
   }
 
+  const isSelfShip = existingWf?.shipping_method === "self"
+
   const logistics = buildLogisticsStatusPatch({
     status: transition.status,
     reason,
     isCodOrder: isCod,
   })
 
-  // If COD already delivered and cash comes later, keep delivered stage
-  if (transition.status === "cash_collected" && vendorId) {
+  // If COD already delivered and cash comes later, keep delivered stage (Easy Ship only)
+  if (!isSelfShip && transition.status === "cash_collected" && vendorId) {
     const existing = getVendorWorkflow(metadata, vendorId)
     if (existing.stage === "delivered" || existing.shiprocket_status === "delivered") {
       logistics.stage = "delivered"
     }
   }
 
-  const { should_schedule_earnings, ...patch } = logistics
+  const { should_schedule_earnings: rawShouldScheduleEarnings, ...rawPatch } = logistics
+  // Self-ship: tracking-only — never auto-set stage delivered or unlock earnings from ITL
+  let patch = rawPatch
+  let should_schedule_earnings = rawShouldScheduleEarnings
+  if (isSelfShip) {
+    const {
+      stage: _dropStage,
+      shiprocket_delivered_at: _dropDeliveredAt,
+      cod_cash_collected_at: _dropCod,
+      ...selfSafe
+    } = rawPatch
+    patch = selfSafe
+    should_schedule_earnings = false
+  }
+
   const stampedPatch = {
     ...patch,
     easy_tracking_status: transition.status || null,
@@ -140,7 +157,7 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
   let nextMetadata = metadata
   if (vendorId) {
     nextMetadata = mergeVendorWorkflowMetadata(metadata, vendorId, stampedPatch)
-  } else {
+  } else if (!isSelfShip) {
     nextMetadata = {
       ...metadata,
       shiprocket_status: patch.shiprocket_status,
@@ -157,13 +174,14 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
 
   await orderModuleService.updateOrders(match.id, { metadata: nextMetadata })
   console.log(
-    `[ITL] Updated order ${match.id} status=${transition.status} vendor=${vendorId || "root"}`
+    `[ITL] Updated order ${match.id} status=${transition.status} vendor=${vendorId || "root"} self_ship=${isSelfShip}`
   )
 
   const shouldPay =
-    should_schedule_earnings ||
-    (transition.status === "cash_collected" && isCod) ||
-    (transition.status === "delivered" && !isCod)
+    !isSelfShip &&
+    (should_schedule_earnings ||
+      (transition.status === "cash_collected" && isCod) ||
+      (transition.status === "delivered" && !isCod))
 
   if (shouldPay) {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL })
@@ -218,10 +236,13 @@ export async function handleItlWebhook(req: MedusaRequest, res: MedusaResponse) 
       ["delivered", "cash_collected", "cancelled", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(previousStatus))
   if (whatsappEvent && !staleShipped && getItlMode() === "live") {
     const shipment = existingWf || metadata
-    try {
-      await enqueueNotification(req.scope, match.id, whatsappEvent, shipment.tracking_url)
-    } catch {
-      // Request a carrier retry if durable enqueue failed, even after status persistence.
+    const [whatsapp, email] = await Promise.allSettled([
+      Promise.resolve().then(() => enqueueNotification(req.scope, match.id, whatsappEvent, shipment.tracking_url)),
+      enqueueOrderEmail({ orderId: match.id }, whatsappEvent),
+    ])
+    if (email.status === "rejected") console.warn(`[order-email] ITL webhook enqueue failed order=${match.id}`)
+    if (whatsapp.status === "rejected" || email.status === "rejected") {
+      // Retry the durable enqueue even after the tracking state was persisted.
       return res.status(503).json({ message: "Notification enqueue unavailable; retry webhook" })
     }
   }

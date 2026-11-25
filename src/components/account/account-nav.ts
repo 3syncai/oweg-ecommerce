@@ -1,3 +1,4 @@
+import { storefrontAffiliateLink, storefrontRewardLink } from "@/lib/storefront-links";
 import type { AccountHubIconName } from "@/components/ui/icons/account-hub";
 
 export type AccountNavItem = {
@@ -12,6 +13,8 @@ export const ACCOUNT_NAV: AccountNavItem[] = [
   { href: "/account/wishlist", label: "Wishlist", icon: "wishlist" },
   { href: "/account/notifications", label: "Notifications", icon: "notifications" },
   { href: "/account/addresses", label: "Addresses", icon: "addresses" },
+  { ...storefrontRewardLink, icon: "coins" },
+  { ...storefrontAffiliateLink, icon: "my-account" },
   { href: "/account/help", label: "Help & Support", icon: "help-and-support" },
 ];
 

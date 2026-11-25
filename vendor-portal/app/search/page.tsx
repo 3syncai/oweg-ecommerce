@@ -116,7 +116,7 @@ export default function VendorSearchPage() {
       try {
         setLoading(true)
         const [productsData, ordersData, customersData] = await Promise.all([
-          vendorProductsApi.list().catch(() => ({ products: [] })),
+          vendorProductsApi.list({ limit: 50, offset: 0 }).catch(() => ({ products: [] })),
           vendorOrdersApi.list().catch(() => ({ orders: [] })),
           vendorCustomersApi.list().catch(() => ({ customers: [] })),
         ])

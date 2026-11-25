@@ -19,7 +19,8 @@ import type { Pool } from "pg"
 import { clampTaxRate } from "./vendor-marketplace-tax"
 
 export const DEFAULT_PLATFORM_FEE_RATE = 5
-export const DEFAULT_PARTNER_COMMISSION_RATE = 11
+/** Partner % is product-scoped (NH catalog) at order place. Store default is 0. */
+export const DEFAULT_PARTNER_COMMISSION_RATE = 0
 export const DEFAULT_SERVICE_GST_RATE = 18
 export const DEFAULT_OUTPUT_GST_RATE = 18
 export const DEFAULT_CANCELLATION_CHARGE = 0
@@ -205,6 +206,10 @@ export function ledgerRowBalanceDelta(row: {
   )
 }
 
+/**
+ * Running available balance. UNLOCKING / ON_HOLD rows stay visible on the
+ * ledger but do not increase Balance until the return window clears.
+ */
 export function applyRunningLedgerBalance<
   T extends {
     category: LedgerCategory
@@ -213,11 +218,15 @@ export function applyRunningLedgerBalance<
     bank_settlement: number
     reverse_logistic_total: number
     cancellation_total: number
+    status?: string
   },
 >(rows: T[]): Array<T & { balance_amount: number }> {
   let running = 0
   return rows.map((row) => {
-    running = round2(running + ledgerRowBalanceDelta(row))
+    const status = String(row.status || "").toUpperCase()
+    const deferred = status === "UNLOCKING" || status === "ON_HOLD"
+    const delta = deferred ? 0 : ledgerRowBalanceDelta(row)
+    running = round2(running + delta)
     return { ...row, balance_amount: running }
   })
 }

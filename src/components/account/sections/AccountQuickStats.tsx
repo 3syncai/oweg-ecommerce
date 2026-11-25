@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Users } from "lucide-react";
 import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import type { AccountHubIconName } from "@/components/ui/icons/account-hub";
 import { useAuth } from "@/contexts/AuthProvider";
 import { useAccountAddresses } from "@/hooks/useAccountAddresses";
 import { useAccountOrdersSummary } from "@/hooks/useAccountOrdersSummary";
 import { useAccountWallet } from "@/hooks/useAccountWallet";
+import { storefrontAffiliateLink, storefrontRewardLink } from "@/lib/storefront-links";
 import styles from "../AccountOverview.module.css";
 
 type QuickStatItem = {
@@ -16,8 +17,8 @@ type QuickStatItem = {
   href: string;
   icon?: AccountHubIconName;
   imageSrc?: string;
-  value: string;
-  loading: boolean;
+  value?: string;
+  loading?: boolean;
 };
 
 type QuickStatCardProps = QuickStatItem;
@@ -33,12 +34,10 @@ function QuickStatCard({ label, href, icon, imageSrc, value, loading }: QuickSta
             <img src={imageSrc} alt="" className="h-4 w-4 object-contain" />
           ) : icon ? (
             <AccountHubIcon name={icon} size={16} className="h-4 w-4" />
-          ) : null}
+          ) : <Users className="size-4" aria-hidden="true" />}
         </span>
         <div className={styles.shortcutText}><span>{label}</span>
-      <p>
-        {loading ? "…" : value}
-      </p>
+          {value !== undefined && <p>{loading ? "…" : value}</p>}
         </div>
         <ArrowUpRight className={styles.shortcutArrow} size={15} aria-hidden />
     </Link>
@@ -82,12 +81,12 @@ export default function AccountQuickStats() {
       loading: addressesLoading,
     },
     {
-      label: "Coins",
-      href: "/my-reward",
+      ...storefrontRewardLink,
       imageSrc: "/uploads/coin/coin.png",
       value: coinBalance.toFixed(0),
       loading: walletLoading,
     },
+    storefrontAffiliateLink,
   ];
 
   return (

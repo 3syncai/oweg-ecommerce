@@ -2,181 +2,37 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
 import FlashSaleModuleService from "../../../../modules/flash-sale/service"
 import { FLASH_SALE_MODULE } from "../../../../modules/flash-sale"
+import { assessFlashSales } from "../../../../lib/flash-sale-eligibility"
 
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   try {
-    console.log('[Flash Sale API] Starting flash sale products fetch...')
-    const flashSaleService: FlashSaleModuleService = req.scope.resolve(FLASH_SALE_MODULE)
-    const productModuleService = req.scope.resolve(Modules.PRODUCT)
-    
-    // Get all flash sale items (don't cleanup yet, just filter)
-    console.log('[Flash Sale API] Fetching flash sale items...')
-    const all = req.query.all === '1'
-    const allItems = all ? await flashSaleService.getAllFlashSaleItems() : await flashSaleService.listFlashSaleItems({})
-    console.log(`[Flash Sale API] Total items in DB: ${allItems.length}`)
-    
-    // Filter for active items (not deleted and not expired) - manual check for better control
-    const now = new Date()
-    console.log(`[Flash Sale API] Current time: ${now.toISOString()}`)
-    
-    const flashSaleItems = allItems.filter((item: any) => {
-      // Skip deleted items
-      if (item.deleted_at) {
-        console.log(`[Flash Sale API] Item ${item.id} is deleted`)
-        return false
-      }
-      
-      // Check expiration
-      const expiresAt = item.expires_at instanceof Date ? item.expires_at : new Date(item.expires_at)
-      const isActive = expiresAt > now
-      
-      if (!isActive) {
-        console.log(`[Flash Sale API] Item ${item.id} expired: expires_at=${expiresAt.toISOString()}, now=${now.toISOString()}`)
-      }
-      
-      return isActive
-    })
-    
-    console.log(`[Flash Sale API] Found ${flashSaleItems.length} active flash sale items after filtering`)
-    
-    if (flashSaleItems.length === 0) {
-      // Check all items to see why none are active
-      const allItems = await flashSaleService.listFlashSaleItems({})
-      console.log(`[Flash Sale API] Total flash sale items in DB: ${allItems.length}`)
-      if (allItems.length > 0) {
-        const now = new Date()
-        allItems.forEach((item, idx) => {
-          const expiresAt = item.expires_at instanceof Date ? item.expires_at : new Date(item.expires_at)
-          const isExpired = expiresAt <= now
-          const isDeleted = !!item.deleted_at
-          console.log(`[Flash Sale API] Item ${idx + 1}: product_id=${item.product_id}, expires_at=${expiresAt.toISOString()}, isExpired=${isExpired}, isDeleted=${isDeleted}`)
-        })
-      }
-      
-      return res.json({ 
-        active: false,
-        flash_sale: null,
-        products: []
-      })
+    const service: FlashSaleModuleService = req.scope.resolve(FLASH_SALE_MODULE)
+    const catalog = req.scope.resolve(Modules.PRODUCT)
+    const now = Date.now()
+    const active = (await service.getAllFlashSaleItems()).filter(item => !item.deleted_at && +new Date(item.expires_at) > now)
+    const rows = (await assessFlashSales(active)).filter(item => !item.reason)
+      .sort((a, b) => Number(a.flash_sale_price) - Number(b.flash_sale_price) || +new Date(a.expires_at) - +new Date(b.expires_at))
+    const ids = [...new Set(rows.map(item => item.product_id))]
+    const catalogRows: Awaited<ReturnType<typeof catalog.listProducts>> = []
+    for (let offset = 0; offset < ids.length; offset += 60) {
+      catalogRows.push(...await catalog.listProducts({ id: ids.slice(offset, offset + 60), status: ["published"] }, { take: 60 }))
     }
-    
-    // Get unique product IDs
-    const productIds = Array.from(new Set(flashSaleItems.map(item => item.product_id)))
-    
-    console.log(`[Flash Sale API] Found ${flashSaleItems.length} flash sale items for ${productIds.length} products:`, productIds)
-    
-    // Fetch products — hard-filtered to status=published. This is the live
-    // sync mechanism: if an admin flips a product to draft, it's silently
-    // hidden from the storefront flash sale; flip it back to published and
-    // it returns. No DB writes needed, no cron, fully idempotent.
-    let products: any[] = []
-    try {
-      if (all) {
-        for (let offset = 0; offset < productIds.length; offset += 60) {
-          products.push(...await productModuleService.listProducts({
-            id: productIds.slice(offset, offset + 60), status: ["published"],
-          }, { take: 60 }))
-        }
-      } else {
-        products = await productModuleService.listProducts({ id: productIds, status: ["published"] })
-      }
-      console.log(`[Flash Sale API] Fetched ${products.length} published products from productModuleService`)
-    } catch (error: any) {
-      console.error('[Flash Sale API] Error fetching products:', error.message)
-      // Fallback: fetch one by one and filter by status manually.
-      products = []
-      for (const productId of productIds) {
-        try {
-          const product = await productModuleService.retrieveProduct(productId)
-          if (product && (product as any).status === "published") products.push(product)
-        } catch (e) {
-          console.error(`[Flash Sale API] Failed to fetch product ${productId}:`, e)
-        }
-      }
-      console.log(`[Flash Sale API] Fetched ${products.length} published products using fallback method`)
-    }
-
-    const skippedDraftCount = productIds.length - products.length
-    if (skippedDraftCount > 0) {
-      console.log(`[Flash Sale API] Hid ${skippedDraftCount} flash sale item(s) whose product is not published`)
-    }
-    
-    // Create flash sale item map by product_id
-    const flashSaleItemMap = new Map<string, typeof flashSaleItems[0]>()
-    flashSaleItems.forEach(item => {
-      flashSaleItemMap.set(item.product_id, item)
+    const byId = new Map(catalogRows.map(p => [p.id, p]))
+    const seen = new Set<string>()
+    const products = rows.flatMap(item => {
+      const product = byId.get(item.product_id)
+      if (!product || seen.has(item.variant_id)) return []
+      seen.add(item.variant_id)
+      return [{ ...product, variant_id: item.variant_id, seller: item.seller,
+        flash_sale_price: Number(item.flash_sale_price), original_price: Math.min(item.regular, Number(item.original_price)),
+        flash_sale: { title: item.title, expires_at: item.expires_at, time_remaining_ms: +new Date(item.expires_at) - now } }]
     })
-    
-    // Build products with flash sale prices
-    const productsWithFlashSalePrices = products.map((product: any) => {
-      const flashSaleItem = flashSaleItemMap.get(product.id)
-      if (!flashSaleItem) {
-        console.warn(`[Flash Sale API] No flash sale item found for product ${product.id}`)
-        return null
-      }
-      
-      const expiresAt = flashSaleItem.expires_at instanceof Date 
-        ? flashSaleItem.expires_at 
-        : new Date(flashSaleItem.expires_at)
-      
-      // Calculate time remaining
-      const now = new Date()
-      const timeRemaining = Math.max(0, expiresAt.getTime() - now.getTime())
-      
-      // Get variant_id from product or flash sale item
-      const variantId = flashSaleItem.variant_id || product.variants?.[0]?.id || null
-      
-      // Postgres returns NUMERIC columns as strings ("900.00"), which breaks
-      // downstream comparisons like `mrp > price` (string-compare bug that
-      // makes some flash-sale cards show "0% off"). Always hand the
-      // storefront real numbers so every consumer can compare/render safely.
-      const flashSalePriceNum = Number(flashSaleItem.flash_sale_price)
-      const originalPriceNum = Number(flashSaleItem.original_price)
-
-      return {
-        ...product,
-        variant_id: variantId, // Include variant_id for add to cart
-        flash_sale_price: Number.isFinite(flashSalePriceNum) ? flashSalePriceNum : 0,
-        original_price: Number.isFinite(originalPriceNum) ? originalPriceNum : 0,
-        flash_sale: {
-          title: flashSaleItem.title ?? null,
-          expires_at: expiresAt.toISOString(),
-          time_remaining_ms: timeRemaining,
-        }
-      }
-    }).filter(Boolean)
-    
-    console.log(`[Flash Sale API] Returning ${productsWithFlashSalePrices.length} products with flash sale prices`)
-    
-    // Get the earliest expiration time for the countdown
-    const earliestExpiration = flashSaleItems.reduce((earliest, item) => {
-      const expiresAt = item.expires_at instanceof Date 
-        ? item.expires_at 
-        : new Date(item.expires_at)
-      return !earliest || expiresAt < earliest ? expiresAt : earliest
-    }, null as Date | null)
-    
-    const timeRemaining = earliestExpiration 
-      ? Math.max(0, earliestExpiration.getTime() - new Date().getTime())
-      : 0
-    const headingItem = flashSaleItems.find(item => new Date(item.expires_at).getTime() === earliestExpiration?.getTime())
-    
-    return res.json({ 
-      active: true,
-      flash_sale: {
-        title: headingItem?.title ?? null,
-        expires_at: earliestExpiration?.toISOString() || null,
-        time_remaining_ms: timeRemaining,
-        item_count: flashSaleItems.length,
-      },
-      products: productsWithFlashSalePrices
-    })
-  } catch (error: any) {
-    console.error("Error fetching flash sale products:", error)
-    return res.json({ 
-      active: false,
-      flash_sale: null,
-      products: []
-    })
+    const earliest = products.reduce<typeof products[number] | undefined>((first, item) =>
+      !first || item.flash_sale.time_remaining_ms < first.flash_sale.time_remaining_ms ? item : first, undefined)
+    return res.json({ active: Boolean(earliest), products, flash_sale: earliest ?
+      { ...earliest.flash_sale, item_count: products.length } : null })
+  } catch (error) {
+    console.error("Error fetching flash sale offers", error)
+    return res.status(503).json({ active: false, flash_sale: null, products: [] })
   }
 }

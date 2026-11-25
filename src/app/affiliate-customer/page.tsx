@@ -19,7 +19,6 @@ import {
   RefreshCcw,
   RotateCcw,
   Search,
-  Sparkles,
   Undo2,
   Users,
   X,
@@ -357,17 +356,13 @@ export default function AffiliateCustomerDashboard() {
   const recentActivity = stats.recent_activity ?? [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white via-emerald-50/40 to-white text-gray-900">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <div className="oweg-page min-h-screen text-[var(--oweg-ink)]">
+      <div className="oweg-container max-w-6xl py-6 sm:py-10 space-y-5 sm:space-y-7">
         {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-100 text-emerald-700 px-3 py-1 text-xs font-semibold mb-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              Affiliate Dashboard
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-semibold">
-              Welcome back{customer?.first_name ? `, ${customer.first_name}` : ""}!
+        <header className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight">
+              Customer affiliate
             </h1>
             <p className="text-gray-600 mt-1 text-sm">
               Track your referrals, coins, and share product links.
@@ -376,21 +371,22 @@ export default function AffiliateCustomerDashboard() {
           <button
             onClick={() => void refreshStats()}
             disabled={statsValidating}
-            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            aria-label="Refresh affiliate dashboard"
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white sm:px-4 text-sm font-semibold hover:bg-gray-50 disabled:opacity-60"
           >
             <RefreshCcw className={`w-4 h-4 ${statsValidating ? "animate-spin" : ""}`} />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </button>
         </header>
 
         {/* Referral code card */}
-        <section className="rounded-3xl border border-emerald-100 bg-white p-6 shadow-sm">
+        <section className="rounded-2xl border border-emerald-900/15 bg-white p-4 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-wider text-emerald-700 font-semibold mb-1">
                 Your Referral Code
               </p>
-              <p className="font-mono text-3xl sm:text-4xl tracking-widest font-semibold text-gray-900">
+              <p className="font-mono text-2xl sm:text-3xl break-all tracking-wider font-semibold text-[#145448]">
                 {referCode}
               </p>
             </div>
@@ -398,7 +394,7 @@ export default function AffiliateCustomerDashboard() {
               <button
                 type="button"
                 onClick={() => copyText("code", referCode)}
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-emerald-700 transition"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#145448] text-white px-3 sm:px-4 text-sm font-semibold hover:bg-[#103f37] transition-colors"
               >
                 {copiedKey === "code" ? (
                   <>
@@ -413,7 +409,7 @@ export default function AffiliateCustomerDashboard() {
               <button
                 type="button"
                 onClick={() => copyText("link", buildShareLink())}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 px-4 py-2.5 text-sm font-semibold hover:bg-emerald-100 transition"
+                className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-900/20 bg-white text-[#145448] px-3 sm:px-4 text-sm font-semibold hover:bg-emerald-50 transition-colors"
               >
                 {copiedKey === "link" ? (
                   <>
@@ -427,6 +423,7 @@ export default function AffiliateCustomerDashboard() {
               </button>
             </div>
           </div>
+          <p className="mt-3 text-sm text-gray-600">Share your link with a friend so they can apply your code at checkout.</p>
         </section>
 
         {/* Stats cards */}
@@ -587,7 +584,7 @@ export default function AffiliateCustomerDashboard() {
         {/* Products with referral link */}
         <section
           ref={productsSectionRef}
-          className="rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24"
+          className="rounded-2xl border border-gray-200 bg-white overflow-hidden scroll-mt-24"
         >
           <div className="px-6 py-4 border-b border-gray-100 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -667,7 +664,7 @@ export default function AffiliateCustomerDashboard() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 sm:p-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4 p-2 sm:p-6">
                 {products.map((p) => {
                   const link = buildShareLink({ handle: p.handle, id: p.id });
                   const key = `prod-${p.id}`;
@@ -709,13 +706,13 @@ export default function AffiliateCustomerDashboard() {
                         <p className="text-sm font-medium line-clamp-2 min-h-[2.5rem]">
                           {p.name}
                         </p>
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
                           <p className="text-emerald-700 font-semibold text-sm">
                             {formatINR(p.price || 0)}
                           </p>
                           <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
                             <Image
-                              src="/Oweg3d-400.png"
+                              src="/uploads/coin/coin.png"
                               alt=""
                               width={14}
                               height={14}
@@ -725,8 +722,8 @@ export default function AffiliateCustomerDashboard() {
                             +{formatCoins(Math.round((p.price || 0) * AFFILIATE_COMMISSION_RATE))}
                           </span>
                         </div>
-                        <p className="text-[10px] text-gray-400">
-                          You earn on each sale
+                        <p className="text-xs text-gray-600">
+                          Estimated coins
                         </p>
                       </div>
                     </button>
@@ -816,12 +813,12 @@ function StatCard({
   };
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-3 sm:p-5">
       <div className={`inline-flex items-center justify-center w-9 h-9 rounded-xl border ${toneClasses[tone]} mb-3`}>
         {icon}
       </div>
       <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
-      <p className="text-2xl font-semibold mt-1">{value}</p>
+      <p className="break-words text-xl sm:text-2xl font-semibold mt-1">{value}</p>
       {sub ? <p className="text-xs text-gray-500 mt-1">{sub}</p> : null}
     </div>
   );

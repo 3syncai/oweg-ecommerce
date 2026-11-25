@@ -26,27 +26,39 @@ function extractAddresses(data: unknown): StoreAddress[] {
 }
 
 export async function GET(req: NextRequest) {
+  const headers = { "Cache-Control": "private, no-store" };
   const forwardedCookie = req.headers.get("cookie") || undefined;
   if (!forwardedCookie) {
-    return NextResponse.json({ addresses: [] }, { status: 200 });
+    return NextResponse.json({ addresses: [] }, { headers });
   }
 
   try {
-    const res = await medusaStoreFetch("/store/customers/me/addresses", {
-      method: "GET",
-      forwardedCookie,
-      headers: { Cookie: forwardedCookie },
-    });
+    const addresses = new Map<string, StoreAddress>();
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(8000)]);
+    const limit = 50;
+    let offset = 0;
+    for (;;) {
+      const res = await medusaStoreFetch(`/store/customers/me/addresses?limit=${limit}&offset=${offset}&order=id&fields=%2Baddress_name`, {
+        forwardedCookie,
+        headers: { Cookie: forwardedCookie },
+        cache: "no-store",
+        signal,
+      });
 
-    if (!res.ok) {
-      const text = await res.text();
-      return NextResponse.json({ error: text || "Unable to load addresses" }, { status: res.status });
+      if (!res.ok) {
+        return NextResponse.json({ error: "Unable to load addresses" }, { status: res.status, headers });
+      }
+
+      const data = await res.json();
+      const page = extractAddresses(data);
+      for (const address of page) addresses.set(address.id, address);
+      offset += page.length;
+      if (page.length === 0 || typeof data.count !== "number" || offset >= data.count) {
+        return NextResponse.json({ addresses: [...addresses.values()] }, { headers });
+      }
     }
-
-    const data = await res.json();
-    return NextResponse.json(data);
   } catch {
-    return NextResponse.json({ error: "Unexpected error loading addresses" }, { status: 500 });
+    return NextResponse.json({ error: "Unexpected error loading addresses" }, { status: 500, headers });
   }
 }
 

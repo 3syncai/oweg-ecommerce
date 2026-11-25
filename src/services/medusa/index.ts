@@ -1,5 +1,6 @@
 // Medusa Service Layer: Client-side API abstraction
 // This module provides typed, reusable API functions that work in both server and client
+import type { ProductSort } from "@/lib/product-sort";
 
 // Type definitions (imported types only, no server-side code)
 export type MedusaCategory = {
@@ -69,6 +70,8 @@ export type CategoryProductQueryParams = {
   priceMax?: number;
   dealsOnly?: boolean;
   includeSubcategories?: boolean;
+  sort?: ProductSort;
+  brands?: string[];
 };
 
 export type CategoryProductsPage = {
@@ -81,6 +84,11 @@ export type CategoryProductsPage = {
   appliedPriceMin?: number;
   appliedPriceMax?: number;
   appliedDealsOnly?: boolean;
+  appliedSort?: ProductSort;
+  appliedBrands?: string[];
+  brandOptions?: string[];
+  dealCount?: number;
+  complete?: boolean;
 };
 
 /**
@@ -146,6 +154,8 @@ export async function getProductsByCategoryService(
   if (params?.includeSubcategories) {
     search.set("includeSubcategories", "1");
   }
+  search.set("sort", params?.sort ?? "default");
+  params?.brands?.forEach(brand => search.append("brand", brand));
 
   const response = await fetch(`/api/medusa/products?${search.toString()}`, {
     signal,
@@ -169,7 +179,7 @@ export async function getProductsByCategoryService(
       ? data.hasMore
       : offset + products.length < count;
 
-  return { products, count, limit, offset, hasMore };
+  return { ...data, products, count, limit, offset, hasMore };
 }
 
 /**

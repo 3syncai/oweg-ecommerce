@@ -14,6 +14,7 @@ import {
   sliceFilteredPage,
 } from "@/lib/paginated-in-stock";
 import type { CategoryProductsPage } from "@/services/medusa";
+import { sortProductsByPrice, type ProductSort } from "@/lib/product-sort";
 
 const PRODUCTS_PER_PAGE = 20;
 
@@ -69,6 +70,8 @@ export async function buildCategoryProductsPage(options: {
   priceMin?: number;
   priceMax?: number;
   dealsOnly?: boolean;
+  sort?: ProductSort;
+  brands?: string[];
 }): Promise<CategoryProductsPage> {
   const limit = options.limit ?? PRODUCTS_PER_PAGE;
   const offset = options.offset ?? 0;
@@ -77,80 +80,75 @@ export async function buildCategoryProductsPage(options: {
     (typeof options.priceMax === "number" && Number.isFinite(options.priceMax)) ||
     Boolean(options.dealsOnly);
 
-  const priceListPrices = await getPriceListPrices();
-
-  // When price/deal filters are active, fetch a stable window from offset 0,
-  // filter, then slice — avoids duplicate/skip across pages.
-  if (hasClientFilters) {
-    const listResult = await fetchCatalogCategoryProducts(options.categoryId, {
-      includeSubcategories: options.includeSubcategories,
-      offset: 0,
-      fallbackLimit: MEDUSA_LIST_MAX_LIMIT,
-    });
-    const inStockProducts = (listResult.products || []).filter(isMedusaProductInStock);
-    const filtered = applyClientFilters(
-      groupCatalogProductCards(applyPriceList(inStockProducts, priceListPrices)),
-      options
-    );
-    const pageProducts = filtered.slice(offset, offset + limit);
-    return {
-      products: pageProducts,
-      count: listResult.complete ? filtered.length : listResult.count,
-      limit,
-      offset,
-      hasMore: listResult.complete ? offset + limit < filtered.length : offset + limit < listResult.count,
-      appliedPriceMin: options.priceMin,
-      appliedPriceMax: options.priceMax,
-      appliedDealsOnly: Boolean(options.dealsOnly),
-    };
-  }
-
   const fetchLimit = overfetchLimit(limit, MEDUSA_LIST_MAX_LIMIT);
-  const listResult = await fetchCatalogCategoryProducts(options.categoryId, {
-    includeSubcategories: options.includeSubcategories,
-    offset,
-    fallbackLimit: fetchLimit,
+  const [priceListPrices, listResult] = await Promise.all([
+    getPriceListPrices(),
+    fetchCatalogCategoryProducts(options.categoryId, {
+      includeSubcategories: options.includeSubcategories,
+      offset: hasClientFilters ? 0 : offset,
+      fallbackLimit: hasClientFilters ? MEDUSA_LIST_MAX_LIMIT : fetchLimit,
+    }),
+  ]);
+  const cards = groupCatalogProductCards(applyPriceList(
+    listResult.products.filter(isMedusaProductInStock), priceListPrices,
+  ));
+  const brandFor = (card: (typeof cards)[number]) => card.brand?.trim() ||
+    card.name.trim().split(/\s+/, 1)[0]?.replace(/[^A-Za-z0-9&]/g, "") || "";
+  const brands = new Map<string, string>();
+  cards.forEach(card => {
+    const label = brandFor(card);
+    if (label.length >= 2 && label.length <= 80) brands.set(label.toLowerCase(), label);
   });
-
-  const products = listResult.products;
-  const medusaCount = listResult.count;
-  const inStockProducts = products.filter(isMedusaProductInStock);
-  const ui = applyClientFilters(
-    groupCatalogProductCards(applyPriceList(inStockProducts, priceListPrices)),
-    options
-  );
-
-  if (listResult.complete) {
-    return {
-      products: ui.slice(offset, offset + limit),
-      count: ui.length,
-      limit,
-      offset,
-      hasMore: offset + limit < ui.length,
-      appliedPriceMin: options.priceMin,
-      appliedPriceMax: options.priceMax,
-      appliedDealsOnly: Boolean(options.dealsOnly),
-    };
-  }
-
-  const page = sliceFilteredPage({
-    filtered: ui,
-    fetchedCount: products.length,
-    pageLimit: limit,
-    offset,
-    fetchLimit,
-    upstreamCount: medusaCount,
-  });
-
-  return {
-    products: page.products,
-    count: page.count,
-    limit,
-    offset,
-    hasMore: page.hasMore,
+  const selected = new Set(options.brands);
+  const matchesBrand = (card: (typeof cards)[number]) =>
+    selected.size === 0 || selected.has(brandFor(card).toLowerCase());
+  const ui = applyClientFilters(cards, options);
+  const appliedSort = options.sort ?? "default";
+  const responseFields = {
+    limit, offset,
+    complete: listResult.complete,
     appliedPriceMin: options.priceMin,
     appliedPriceMax: options.priceMax,
     appliedDealsOnly: Boolean(options.dealsOnly),
+    appliedSort,
+    appliedBrands: options.brands ?? [],
+    brandOptions: [...brands.values()].sort((a, b) => a.localeCompare(b)),
+    dealCount: listResult.complete ? cards.filter(card => card.limitedDeal).length : undefined,
+  };
+
+  if (listResult.complete) {
+    const matching = sortProductsByPrice(ui.filter(matchesBrand), appliedSort);
+    return {
+      ...responseFields,
+      products: matching.slice(offset, offset + limit),
+      count: matching.length,
+      hasMore: offset + limit < matching.length,
+    };
+  }
+
+  // Keep the existing bounded listing for large categories. Sorting only this
+  // window would give the wrong ordering across pages.
+  if (hasClientFilters) return {
+    ...responseFields,
+    products: ui.slice(offset, offset + limit).filter(matchesBrand),
+    count: listResult.count,
+    hasMore: offset + limit < listResult.count,
+  };
+
+  const page = sliceFilteredPage({
+    filtered: ui,
+    fetchedCount: listResult.products.length,
+    pageLimit: limit,
+    offset,
+    fetchLimit,
+    upstreamCount: listResult.count,
+  });
+
+  return {
+    ...responseFields,
+    products: page.products.filter(matchesBrand),
+    count: page.count,
+    hasMore: page.hasMore,
   };
 }
 

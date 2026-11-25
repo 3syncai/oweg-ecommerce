@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { getDebugControllerSettings } from "./settings";
 
 export async function getCheckoutGuardResponse(): Promise<NextResponse | null> {
-  const settings = await getDebugControllerSettings();
+  const settings = await getDebugControllerSettings().catch(() => null);
+  if (!settings) {
+    return NextResponse.json(
+      { error: "Checkout is temporarily unavailable. Your cart is saved. Please try again shortly.", code: "CHECKOUT_SETTINGS_UNAVAILABLE" },
+      { status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "3" } }
+    );
+  }
 
   if (settings.siteStatus === "maintenance") {
     return NextResponse.json(

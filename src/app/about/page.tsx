@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Leaf, ShieldCheck, Truck, Users } from "lucide-react";
 
 const stats = [
@@ -145,3 +146,8 @@ export default function AboutPage() {
     </div>
   );
 }
+
+export const metadata: Metadata = {
+  title: "About us",
+  description: "Learn about OWEG, our marketplace, and the home, kitchen and electronics products we bring together.",
+};

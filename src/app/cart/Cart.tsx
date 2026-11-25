@@ -3,12 +3,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Minus, Plus, Trash2, ChevronRight, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
+import ShoppingEmptyState from "@/components/shopping/ShoppingEmptyState";
+import surface from "@/components/shopping/ShoppingSurface.module.css";
+import { Minus, Plus, Trash2, ShoppingBag, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import { useIsMutating } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/hooks/useCart";
+import { useOnlineStatus, useSlowPending } from "@/hooks/useOnlineStatus";
 import { CART_MUTATION_KEY, useUpdateCartLineItem, useRemoveCartLineItem } from "@/hooks/useCartMutations";
 import {
   extractCartObject,
@@ -24,7 +27,6 @@ import {
 import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import { warmRazorpayCheckout } from "@/lib/razorpay-warmup";
 import styles from "@/components/shopping/Shopping.module.css";
-import PurchaseJourney from "@/components/shopping/PurchaseJourney";
 import { cartVariantLabel } from "@/lib/cart-variant-label";
 interface CartItemUI {
   id: string;
@@ -431,10 +433,10 @@ const Cart: React.FC = () => {
   const remove = useRemoveCartLineItem();
   const pendingWrites = useIsMutating({ mutationKey: CART_MUTATION_KEY }) > 0;
   const cartItems = useMemo(() => mapCartPayloadToItems(cart.data), [cart.data]);
-  const loading = cart.isPending || (pendingWrites && cartItems.length === 0);
+  const online = useOnlineStatus();
+  const loading = online && (cart.isPending || (pendingWrites && cartItems.length === 0));
+  const slow = useSlowPending(loading);
   const [couponCode, setCouponCode] = useState("");
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
 
   const updateQuantity = async (lineId: string, quantity: number, label: string) => {
     if (quantity < 1 || pendingWrites) return;
@@ -658,69 +660,53 @@ const Cart: React.FC = () => {
   const cartField =
     "h-11 rounded-xl border-slate-200/90 bg-white shadow-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus-visible:border-[var(--oweg-green)] focus-visible:ring-[3px] focus-visible:ring-[var(--oweg-green)]/20";
   const cartCta =
-    styles.primaryButton;
+    surface.primary;
   const cartOutline =
     "rounded-xl border-slate-200/80 bg-white text-[#2c342f] hover:border-[var(--oweg-green)]/50 hover:bg-[#f2f9ef] hover:text-[var(--oweg-green-dark)] transition-all duration-200";
   const cartStepper =
     "cart-stepper flex items-center overflow-hidden rounded-xl border border-slate-200/80 bg-white";
 
   return (
-    <div className={`${styles.page} min-h-screen flex flex-col`}>
-      <main className="flex-1">
-        <div className={`${styles.container} ${styles.cartContainer}`}>
-          <div className="flex items-center gap-3 mb-6 md:mb-8">
-            <Link href="/" className="text-sm text-slate-500 hover:text-[#2c342f] transition">
-              Home
-            </Link>
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-            <span className="text-sm font-medium bg-[#f0f5ef] text-[var(--oweg-green-dark)] px-3 py-1 rounded-full">
-              Cart
-            </span>
-          </div>
-
-          <div className={styles.heading}>
-            <div><h1>Your cart</h1><p>Review your items before checking out.</p></div>
-            <PurchaseJourney current="cart" />
-          </div>
+    <div className={`${surface.surface} flex flex-col`}>
+      <div className="flex-1">
+        <div className={`${surface.container} ${styles.cartContainer}`} data-has-items={cartItems.length > 0}>
+          <header className={surface.heading}>
+            <h1>Your cart</h1>
+            {cartItems.length > 0 && <span>{cartItems.length} {cartItems.length === 1 ? "item" : "items"}</span>}
+          </header>
 
           <div className={styles.cartLayout}>
           <div className={`${styles.cartItems} space-y-3`}>
 
             {loading && (
               <div role="status" aria-label="Loading your cart" className="space-y-3 p-4">
-                <p>Loading your cart…</p>
-                {[0, 1].map(id => <div key={id} aria-hidden="true" className="h-32 animate-pulse rounded-xl bg-slate-100" />)}
+                <p>{slow ? "Loading your cart is taking longer than usual…" : "Loading your cart…"}</p>
+                {[0, 1].map(id => <div key={id} aria-hidden="true" className="h-32 rounded-xl bg-slate-100 motion-safe:animate-pulse" />)}
               </div>
             )}
-            {cart.isError && (
+            {online && cart.isError && (
               <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5">
                 <p>We couldn&apos;t refresh your cart. Please try again before checking out.</p>
                 <Button className="mt-3" disabled={cart.isFetching || pendingWrites} onClick={() => void cart.refetch()}>Retry loading cart</Button>
               </div>
             )}
-            {!loading && !cart.isError && !pendingWrites && cartItems.length === 0 && (
-              <div className={styles.emptyState}>
-                <h2>Your cart is empty</h2><p>Find something you love and add it to your cart.</p>
-                <Link href="/" className={styles.primaryButton}>Continue shopping</Link>
-              </div>
+            {online && !loading && !cart.isError && !pendingWrites && cartItems.length === 0 && (
+              <ShoppingEmptyState icon={ShoppingBag} title="Your cart is empty" description="Add a product to see it here." />
             )}
             {cartItems.map((item) => {
               const isRemoving = remove.isPending && remove.variables?.lineId === item.id;
               const isUpdating = update.isPending && update.variables?.lineId === item.id;
-              const controlsDisabled = pendingWrites || isRemoving || isUpdating;
+              const controlsDisabled = !online || pendingWrites || isRemoving || isUpdating;
               return (
                 <div
                   key={item.id}
-                  className={`cart-line-card ${cartCard} ${styles.lineCard} flex flex-col md:flex-row md:items-center gap-4 md:gap-6 transition-all transform ${
-                    mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-                  } ${isRemoving ? "opacity-60" : ""}`}
-                  style={{ transitionDuration: "320ms" }}
+                  className={`cart-line-card ${cartCard} ${styles.lineCard} flex flex-col md:items-center gap-4 ${isRemoving ? "opacity-60" : ""}`}
                 >
-                  <div className="flex items-center gap-3 md:gap-4 w-full md:w-3/5 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <button
                       onClick={() => removeItem(item)}
                       title={isRemoving ? "Removing…" : "Remove item"}
-                      className={`shrink-0 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl p-2 transition ${
+                    className={`order-last grid size-11 shrink-0 place-items-center self-start text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition ${
                         isRemoving ? "opacity-50 cursor-wait" : ""
                       }`}
                       aria-label={`Remove ${item.name}`}
@@ -735,14 +721,14 @@ const Cart: React.FC = () => {
                       )}
                     </button>
 
-                    <div className="w-[72px] h-[72px] flex-shrink-0 rounded-xl overflow-hidden bg-[#f0f5ef] flex items-center justify-center">
+                    <div className="size-14 sm:size-[72px] flex-shrink-0 rounded-xl overflow-hidden bg-[#f0f5ef] flex items-center justify-center">
                       {item.image ? (
                         <Image
                           src={item.image}
                           alt={item.name}
                           width={80}
                           height={80}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain"
                         />
                       ) : (
                         <div className="text-xs text-slate-400">No image</div>
@@ -859,7 +845,7 @@ const Cart: React.FC = () => {
             {cartItems.length > 0 && (
             <div className={styles.cartExtras}>
               <div className="flex flex-wrap gap-3">
-                <Button variant="outline" className={`px-5 py-3 h-11 ${cartOutline}`}>
+                <Button asChild variant="outline" className={`px-5 py-3 h-11 ${cartOutline}`}>
                   <Link href="/">Return to shop</Link>
                 </Button>
                 <Button
@@ -935,7 +921,7 @@ const Cart: React.FC = () => {
             </div>
             )}
 
-            <div
+            {cartItems.length > 0 && <div
               className={`cart-summary-panel ${styles.cartSummary}`}
             >
               <div className="md:hidden">
@@ -947,7 +933,7 @@ const Cart: React.FC = () => {
                   aria-expanded={checkoutExpanded}
                 >
                   <div className="flex items-center gap-2.5">
-                    <h3 className="text-sm font-semibold text-[#2c342f]">Cart Total</h3>
+                    <span className="text-sm font-semibold text-[#2c342f]">Total</span>
                     <span className="text-sm font-bold text-[var(--oweg-green-dark)]">
                       {formatCurrency(total, activeCurrency)}
                     </span>
@@ -961,13 +947,11 @@ const Cart: React.FC = () => {
               </div>
 
               <h3 className="hidden md:block text-xl font-semibold text-[#2c342f] p-6 pb-0">
-                Cart Total
+                Order summary
               </h3>
 
               <div
-                className={`transition-all duration-300 ease-in-out ${
-                  checkoutExpanded ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"
-                } md:max-h-none md:opacity-100`}
+                className={checkoutExpanded ? "block" : "hidden md:block"}
               >
                 <div className="px-4 md:px-6 pt-0 pb-3 md:pt-6 md:pb-4 space-y-3 md:space-y-4">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2.5 md:pb-3 pt-3 md:pt-0">
@@ -992,7 +976,7 @@ const Cart: React.FC = () => {
               </div>
 
               <div className="px-4 md:px-6 pb-4 md:pb-6 pt-0">
-                {cartItems.length === 0 || loading || pendingWrites || cart.isError ? (
+                {!online || cartItems.length === 0 || loading || pendingWrites || cart.isError ? (
                   <Button
                     className={`w-full h-11 md:h-12 text-sm md:text-base ${cartCta}`}
                     disabled
@@ -1006,11 +990,11 @@ const Cart: React.FC = () => {
                   </Button>
                 )}
               </div>
-            </div>
+            </div>}
           </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };

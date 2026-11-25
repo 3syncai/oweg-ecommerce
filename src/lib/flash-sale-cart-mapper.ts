@@ -77,7 +77,9 @@ export function applyFlashSalePricesToCart(
 
     // Product is in flash sale - use flash_sale_price (discounted price) for cart display
     // flash_sale_price is in rupees (major units), use directly
-    const priceToUse = priceMap.get(variantId)!
+    const salePrice = priceMap.get(variantId)!
+    if (typeof item.unit_price === "number" && item.unit_price < salePrice) return item
+    const priceToUse = salePrice
 
     // Override unit_price
     if (item.unit_price !== undefined) {

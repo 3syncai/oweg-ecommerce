@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { appendUpstreamCookies, extractErrorPayload, medusaStoreFetch } from "@/lib/medusa-auth"
+import { appendUpstreamCookies, medusaStoreFetch, STORE_SESSION_COOKIE } from "@/lib/medusa-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -21,20 +21,15 @@ export async function POST(req: NextRequest) {
       skipContentType: true,
     })
 
-    if (!upstream.ok && upstream.status >= 500) {
-      const payload = await extractErrorPayload(upstream)
-      const message =
-        (typeof payload === "string" && payload) ||
-        (typeof payload === "object" && (payload?.error || payload?.message)) ||
-        "Unable to logout. Please try again."
-      return NextResponse.json({ error: message }, { status: upstream.status })
+    if (!upstream.ok && upstream.status !== 401) {
+      return NextResponse.json({ error: "Unable to sign out. Please try again." }, { status: 503 })
     }
 
     const response = NextResponse.json({ success: true }, { status: 200 })
     appendUpstreamCookies(response, upstream)
+    response.cookies.delete(STORE_SESSION_COOKIE)
     return response
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to logout."
-    return NextResponse.json({ error: message }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: "Unable to sign out. Please try again." }, { status: 503 })
   }
 }

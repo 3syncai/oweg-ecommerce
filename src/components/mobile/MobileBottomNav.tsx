@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import BrandLoader from "@/components/ui/BrandLoader";
-import Link from "next/link";
+import { ProductCard, type ProductCardProps } from "@/components/modules/ProductCard";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,43 +24,20 @@ import {
   ChevronsLeft,
   LayoutGrid,
   SlidersHorizontal,
-  ImageOff,
   ShoppingCart,
   Search,
 } from "lucide-react";
 import type { MedusaCategory } from "@/lib/medusa";
+import { useDeliveryLocation } from "@/contexts/DeliveryLocationProvider";
 import { useAuth } from "@/contexts/AuthProvider";
-import { getOriginalImageUrl } from "@/lib/image-utils";
 import CategoryIcon from "@/components/ui/icons/CategoryIcon";
-import CategoryIconTile from "@/components/ui/icons/CategoryIconTile";
+import SubcategoryIcon from "@/components/ui/icons/SubcategoryIcon";
+import { mobileCategoryArtwork } from "@/lib/mobile-category-artwork";
 import MobileProfileSheet from "@/components/mobile/MobileProfileSheet";
+import LogoutConfirmModal from "@/components/account/LogoutConfirmModal";
 import { buildLoginUrl, buildSignupUrl } from "@/lib/auth-redirect";
 import navStyles from "./MobileBottomNav.module.css";
 import { useCartSummary } from "@/contexts/CartProvider";
-
-function CategoryProductImage({ src, name }: { src?: string; name: string }) {
-  const [failed, setFailed] = useState(false);
-  return (
-    <div className={navStyles.productImage}>
-      {src && !failed ? (
-        <Image
-          src={src}
-          alt={name}
-          fill
-          sizes="(max-width: 480px) 45vw, 240px"
-          className="object-contain p-3"
-          unoptimized
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        <div className={navStyles.imagePlaceholder}>
-          <ImageOff size={28} strokeWidth={1.3} aria-hidden="true" />
-          <span>Image unavailable</span>
-        </div>
-      )}
-    </div>
-  );
-}
 
 type MobileCategory = {
   id: string;
@@ -69,31 +47,27 @@ type MobileCategory = {
   children?: MobileCategory[];
 };
 
-type ProductLike = {
-  id?: string | number;
-  handle?: string | number;
-  title?: string;
-  name?: string;
-  image?: string;
-  thumbnail?: string;
-  images?: Array<{ url?: string | null } | string | null> | null;
-  variants?: Array<{ thumbnail?: string | null } | null> | null;
-  metadata?: Record<string, unknown> | null;
-  price?: number;
-  mrp?: number;
-  discount?: number;
-  tags?: Array<{ value?: string; handle?: string } | string>;
-  collection?: { title?: string | null; handle?: string | null };
-};
+function CategoryArtwork({ category, kind, className }: {
+  category: MobileCategory;
+  kind: "category" | "subcategory";
+  className: string;
+}) {
+  const src = mobileCategoryArtwork(kind, category.handle, category.title);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const Icon = kind === "category" ? CategoryIcon : SubcategoryIcon;
+  const size = kind === "category" ? 112 : 192;
 
-const normalizeCategoryKey = (title?: string) =>
-  (title || "")
-    .toString()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "-");
+  return (
+    <span className={className} aria-hidden="true">
+      {src && src !== failedSrc ? (
+        <Image src={src} alt="" width={size} height={size} unoptimized loading="lazy"
+          onError={() => setFailedSrc(src)} />
+      ) : (
+        <Icon handle={category.handle} title={category.title} className={navStyles.artworkFallback} />
+      )}
+    </span>
+  );
+}
 
 const buildCategoryList = (data?: unknown): MobileCategory[] => {
   const raw: MedusaCategory[] = Array.isArray(
@@ -102,7 +76,9 @@ const buildCategoryList = (data?: unknown): MobileCategory[] => {
     ? ((data as { categories?: MedusaCategory[] })
         .categories as MedusaCategory[])
     : [];
-  return raw.map((cat, idx) => {
+  // The store API can return a child both at the top level and nested.
+  const childIds = new Set(raw.flatMap(cat => (cat.category_children || []).map(child => child.id)));
+  return raw.filter(cat => !cat.parent_category_id && !childIds.has(cat.id)).map((cat, idx) => {
     const baseId = cat.id || cat.handle || cat.title || `cat-${idx}`;
     return {
       id: baseId,
@@ -135,132 +111,7 @@ const buildCategoryList = (data?: unknown): MobileCategory[] => {
   });
 };
 
-type InlineProduct = {
-  id: string;
-  name: string;
-  image?: string;
-  price?: number;
-  mrp?: number;
-  discount?: number;
-  brand?: string;
-};
-
-const resolveProductImage = (p: ProductLike): string => {
-  const candidates: Array<string | undefined | null> = [];
-  candidates.push(p?.image);
-  candidates.push(p?.thumbnail);
-  if (Array.isArray(p?.images)) {
-    p.images.forEach((img) => {
-      if (!img) return;
-      if (typeof img === "string") {
-        candidates.push(img);
-        return;
-      }
-      candidates.push(
-        (img as { url?: string | null; original_url?: string | null })
-          .original_url,
-      );
-      const urlVal = (img as { url?: string | null }).url;
-      if (typeof urlVal === "string") candidates.push(urlVal);
-    });
-  }
-  if (Array.isArray(p?.variants)) {
-    p.variants.forEach((v) => {
-      if (!v) return;
-      candidates.push((v as { thumbnail?: string | null }).thumbnail);
-      if (
-        Array.isArray(
-          (
-            v as {
-              images?: Array<{
-                url?: string | null;
-                original_url?: string | null;
-              } | null> | null;
-            }
-          ).images,
-        )
-      ) {
-        (
-          v as {
-            images?: Array<{
-              url?: string | null;
-              original_url?: string | null;
-            } | null> | null;
-          }
-        ).images!.forEach((img) => {
-          if (!img) return;
-          candidates.push(img.original_url);
-          const urlVal = (img as { url?: string | null }).url;
-          if (typeof urlVal === "string") candidates.push(urlVal);
-        });
-      }
-    });
-  }
-  const meta = (p?.metadata || {}) as Record<string, unknown>;
-  ["image", "thumbnail", "img", "picture", "photo", "image_url", "url"].forEach(
-    (key) => {
-      const val = meta[key] as string | undefined;
-      if (typeof val === "string") candidates.push(val);
-    },
-  );
-  const metaImages = meta.images;
-  if (Array.isArray(metaImages)) {
-    metaImages.forEach((item) => {
-      if (typeof item === "string") candidates.push(item);
-      if (item && typeof item === "object" && "url" in item) {
-        candidates.push((item as { url?: string }).url);
-      }
-    });
-  }
-
-  const pick =
-    candidates.find((c) => typeof c === "string" && c.trim().length > 0) || "";
-  if (!pick) return "/oweg_logo.png";
-  const normalized = getOriginalImageUrl(pick.trim());
-  if (normalized.startsWith("http://") || normalized.startsWith("https://"))
-    return normalized;
-  if (normalized.startsWith("/")) {
-    if (typeof window !== "undefined") {
-      return new URL(normalized, window.location.origin).href;
-    }
-  }
-  return normalized || "/oweg_logo.png";
-};
-
-const getProductBrand = (p: ProductLike): string => {
-  const meta = (p.metadata || {}) as Record<string, unknown>;
-  const brand =
-    (meta.brand as string | undefined) ||
-    (meta.Brand as string | undefined) ||
-    (meta.brand_name as string | undefined) ||
-    (meta.BrandName as string | undefined) ||
-    (meta.manufacturer as string | undefined) ||
-    (meta.maker as string | undefined) ||
-    (p.collection?.title as string | undefined) ||
-    (p.collection?.handle as string | undefined);
-  if (typeof brand === "string" && brand.trim()) return brand.trim();
-  const tagBrand = Array.isArray(p.tags)
-    ? p.tags
-        .map((t) => (typeof t === "string" ? t : t?.value || t?.handle || ""))
-        .map((s) => s.trim())
-        .find((s) => s.length > 0)
-    : "";
-  if (tagBrand) return tagBrand;
-  return "";
-};
-
-const formatCurrency = (value?: number) => {
-  if (typeof value !== "number" || Number.isNaN(value)) return "";
-  try {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `â‚¹${Math.round(value)}`;
-  }
-};
+type InlineProduct = ProductCardProps & { brand?: string };
 
 const Overlay = ({
   open,
@@ -280,6 +131,8 @@ const Overlay = ({
       open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
     }`}
     onClick={onClose}
+    aria-hidden={!open}
+    inert={!open}
   >
     <div
       className={`absolute inset-x-0 top-0 bottom-0 transition-transform duration-200 ${
@@ -300,9 +153,10 @@ export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { customer, logout } = useAuth();
+  const { customer } = useAuth();
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const { count: cartCount } = useCartSummary();
-  const [storedPincode, setStoredPincode] = useState("");
+  const { pincode, place } = useDeliveryLocation();
   const resetPanels = useCallback(() => {
     setCategoryOpen(false);
     setProfileOpen(false);
@@ -313,14 +167,13 @@ export default function MobileBottomNav() {
     if (Array.isArray(list)) return list.length;
     return 0;
   }, [customer?.metadata]);
-  const { data: categoryData, isLoading: categoriesLoading } = useStoreCategories();
+  const { data: categoryData, isLoading: categoriesLoading, isError: categoriesError, refetch: refetchCategories } = useStoreCategories();
   const categories = useMemo(
     () => buildCategoryList({ categories: categoryData }),
     [categoryData],
   );
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   const [categorySearch, setCategorySearch] = useState("");
   const categoryContentRef = useRef<HTMLDivElement>(null);
   const categoryScrollPositions = useRef<Record<string, number>>({});
@@ -330,7 +183,10 @@ export default function MobileBottomNav() {
   const [selectedSubcategory, setSelectedSubcategory] =
     useState<MobileCategory | null>(null);
   const [subProducts, setSubProducts] = useState<InlineProduct[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
+  const [settledSubcategory, setSettledSubcategory] = useState<MobileCategory | null>(null);
+  const [productsError, setProductsError] = useState(false);
+  const [productsRetry, setProductsRetry] = useState(0);
+  const productsLoading = selectedSubcategory !== null && selectedSubcategory !== settledSubcategory;
   const [priceSort, setPriceSort] = useState<"none" | "asc" | "desc">("none");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
@@ -378,7 +234,6 @@ export default function MobileBottomNav() {
   }, [selectedCategoryId, sidebarOverlayOpen]);
   const closeCategory = () => {
     setCategoryOpen(false);
-    setSearchTerm("");
     setCategorySearch("");
   };
   const closeProfile = () => setProfileOpen(false);
@@ -417,12 +272,6 @@ export default function MobileBottomNav() {
   }, [categoryOpen, profileOpen]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const pin = window.localStorage.getItem("oweg_pincode") || "";
-    setStoredPincode(pin);
-  }, [overlayOpen, pathname]);
-
-  useEffect(() => {
     resetPanels();
   }, [pathname, resetPanels]);
 
@@ -437,42 +286,20 @@ export default function MobileBottomNav() {
     router.prefetch("/signup");
   }, [router]);
 
-  const categoriesWithChildren = useMemo(
-    () =>
-      categories.filter(
-        (cat) => Array.isArray(cat.children) && cat.children.length > 0,
-      ),
-    [categories],
-  );
-
-  useEffect(() => {
-    if (!categoryOpen) return;
-    if (selectedCategoryId) return;
-    const preferred = categoriesWithChildren.find(
-      (c) => normalizeCategoryKey(c.title) === "home-appliances",
-    );
-    const fallback = categoriesWithChildren[0];
-    const target = preferred || fallback;
-    if (target) {
-      setSelectedCategoryId(target.id);
-      setSelectedSubcategory(null);
-    }
-  }, [categoryOpen, categoriesWithChildren, selectedCategoryId]);
-
   const filteredCategories = useMemo(() => {
     const term = categorySearch.trim().toLowerCase();
-    if (selectedSubcategory || !term) return categoriesWithChildren;
-    return categoriesWithChildren.filter(cat => cat.title.toLowerCase().includes(term) ||
+    if (selectedSubcategory || !term) return categories;
+    return categories.filter(cat => cat.title.toLowerCase().includes(term) ||
       cat.children?.some(child => child.title.toLowerCase().includes(term)));
-  }, [categoriesWithChildren, categorySearch, selectedSubcategory]);
+  }, [categories, categorySearch, selectedSubcategory]);
 
   const displayedCategory = useMemo(() =>
     filteredCategories.find(c => c.id === selectedCategoryId) || filteredCategories[0] || null,
     [filteredCategories, selectedCategoryId]);
 
   useEffect(() => {
-    if (categoryContentRef.current && !selectedSubcategory) {
-      categoryContentRef.current.scrollTop = categorySearch ? 0 :
+    if (categoryContentRef.current) {
+      categoryContentRef.current.scrollTop = selectedSubcategory || categorySearch ? 0 :
         categoryScrollPositions.current[displayedCategory?.id || ""] || 0;
     }
   }, [displayedCategory?.id, categoryOpen, selectedSubcategory, categorySearch]);
@@ -483,55 +310,34 @@ export default function MobileBottomNav() {
     const target = selectedSubcategory;
     if (!target) {
       setSubProducts([]);
-      setProductsLoading(false);
+      setSettledSubcategory(null);
       return;
     }
+    const controller = new AbortController();
     const fetchProducts = async () => {
-      setProductsLoading(true);
+      setProductsError(false);
       try {
-        const query =
-          target.handle && target.handle.length > 0
-            ? `category=${encodeURIComponent(target.handle)}`
-            : target.id
-              ? `categoryId=${encodeURIComponent(target.id)}`
-              : "";
-        if (!query) {
-          setSubProducts([]);
-          setProductsLoading(false);
-          return;
-        }
-        const res = await fetch(`/api/medusa/products?${query}&limit=24`, {
+        const query = new URLSearchParams({ limit: "24" });
+        query.set(target.handle ? "category" : "categoryId", target.handle || target.id);
+        const response = await fetch(`/api/medusa/products?${query}`, {
           cache: "no-store",
+          signal: controller.signal,
         });
-        if (!res.ok) {
-          setSubProducts([]);
-        } else {
-          const data = await res.json();
-          const productArray: ProductLike[] = Array.isArray(data?.products)
-            ? (data.products as ProductLike[])
-            : [];
-          const products = productArray.map((p) => {
-            const brand = getProductBrand(p);
-            return {
-              id: String(p.id || p.handle || Math.random()),
-              name: p.title || p.name || "Product",
-              image: resolveProductImage(p),
-              price: typeof p.price === "number" ? p.price : undefined,
-              mrp: typeof p.mrp === "number" ? p.mrp : undefined,
-              discount: typeof p.discount === "number" ? p.discount : undefined,
-              brand,
-            };
-          });
-          setSubProducts(products);
-        }
+        if (!response.ok) throw new Error("Could not load category products");
+        const { products } = await response.json() as { products?: InlineProduct[] };
+        if (!controller.signal.aborted) setSubProducts(Array.isArray(products) ? products : []);
       } catch {
-        setSubProducts([]);
+        if (!controller.signal.aborted) {
+          setSubProducts([]);
+          setProductsError(true);
+        }
       } finally {
-        setProductsLoading(false);
+        if (!controller.signal.aborted) setSettledSubcategory(target);
       }
     };
     void fetchProducts();
-  }, [selectedSubcategory, activeCategory]);
+    return () => controller.abort();
+  }, [selectedSubcategory, productsRetry]);
 
   useEffect(() => {
     setFiltersOpen(false);
@@ -539,10 +345,6 @@ export default function MobileBottomNav() {
 
   const filteredProducts = useMemo(() => {
     let list = subProducts;
-    if (selectedSubcategory && searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
-      list = list.filter((p) => p.name.toLowerCase().includes(term));
-    }
     const min = priceMin.trim() ? Number(priceMin) : undefined;
     const max = priceMax.trim() ? Number(priceMax) : undefined;
     if (brandFilter) {
@@ -574,8 +376,6 @@ export default function MobileBottomNav() {
     priceMin,
     priceMax,
     priceSort,
-    searchTerm,
-    selectedSubcategory,
   ]);
 
   useEffect(() => {
@@ -695,8 +495,8 @@ export default function MobileBottomNav() {
           | undefined)
       : undefined;
     const addressCity = firstAddress?.city || firstAddress?.country;
-    return metaPlace || addressCity || storedPincode || "Set your location";
-  }, [customer?.metadata, customer?.shipping_addresses, storedPincode]);
+    return place || pincode || metaPlace || addressCity || "Set your location";
+  }, [customer?.metadata, customer?.shipping_addresses, pincode, place]);
 
   const goNav = (href: string) => {
     resetPanels();
@@ -780,11 +580,11 @@ export default function MobileBottomNav() {
 
       {/* Category sheet */}
       <Overlay open={categoryOpen} onClose={closeCategory} scrollable={false} panelClassName={`bg-white ${navStyles.categoryPanel}`}>
-        <div className={`${navStyles.categorySheet} relative`}>
+        {categoryOpen && <div className={`${navStyles.categorySheet} relative`}>
           {(
             <>
               <div className={navStyles.directoryHeader}>
-                <div><p className={navStyles.directoryEyebrow}>FIND YOUR NEXT FAVOURITE</p><h2>Shop by category</h2></div>
+                <h2>{selectedSubcategory ? "Browse products" : "All categories"}</h2>
                 <button type="button" aria-label="Close categories" onClick={closeCategory} className={navStyles.directoryClose}><X size={20} /></button>
               </div>
               {!selectedSubcategory && <div className={navStyles.directorySearch}>
@@ -860,16 +660,8 @@ export default function MobileBottomNav() {
                           aria-expanded={hasChildren ? isExpanded : undefined}
                           title={cat.title}
                         >
-                          <CategoryIconTile
-                            handle={cat.handle}
-                            title={cat.title}
-                            active={active}
-                            size="sm"
-                            orientation="horizontal"
-                            labelWrap
-                            className="min-w-0 flex-1"
-                            labelClassName={navStyles.drawerCategoryLabel}
-                          />
+                          <CategoryArtwork category={cat} kind="category" className={navStyles.drawerArtwork} />
+                          <span className={navStyles.drawerCategoryLabel}>{cat.title}</span>
                           {hasChildren ? (
                             <ChevronRight
                               className={`w-4 h-4 text-gray-500 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -904,14 +696,14 @@ export default function MobileBottomNav() {
           )}
 
           <div
-            className={`${navStyles.categoryBody} relative min-h-0 transition-all duration-300 ease-in-out ${selectedSubcategory ? "" : "flex gap-3"}`}
+            className={`${navStyles.categoryBody} min-h-0 transition-all duration-300 ease-in-out ${productsLoading && !filtersOpen ? "" : "relative"} ${selectedSubcategory ? "" : "flex gap-3"}`}
           >
             {!selectedSubcategory && (
               <nav className={navStyles.departmentRail} aria-label="Departments">
                 {categoriesLoading ? <p className={navStyles.directoryMessage}>Loading…</p> : filteredCategories.map(cat => {
                   const active = displayedCategory?.id === cat.id;
                   return <button key={cat.id} type="button" className={navStyles.department} aria-pressed={active} onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategory(null); }}>
-                    <CategoryIcon handle={cat.handle} title={cat.title} active={active} className="h-7 w-7" />
+                    <CategoryArtwork category={cat} kind="category" className={navStyles.railArtwork} />
                     <span>{cat.title}</span>
                   </button>;
                 })}
@@ -928,14 +720,18 @@ export default function MobileBottomNav() {
                     {!selectedSubcategory && displayedCategory && (
                       <section className={navStyles.directorySection} aria-label={displayedCategory.title}>
                         <div className={navStyles.departmentHeading}>
-                          <div><h3>{displayedCategory.title}</h3><p>Explore the collection</p></div>
-                          <Link href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></Link>
+                          <div>
+                            <h3>{displayedCategory.title}</h3>
+                            <CategoryLink href={`/c/${encodeURIComponent(displayedCategory.handle || displayedCategory.id)}`} prefetch={false} onClick={closeCategory}>Shop all <ChevronRight size={14} aria-hidden="true" /></CategoryLink>
+                          </div>
+                          <CategoryArtwork category={displayedCategory} kind="category" className={navStyles.headingArtwork} />
                         </div>
+                        {!!displayedCategory.children?.length && <h4 className={navStyles.subcategoryHeading}>Shop by subcategory</h4>}
                         <ul className={navStyles.subcategoryGrid}>
                           {(displayedCategory.children || []).filter(child => !categorySearch.trim() || displayedCategory.title.toLowerCase().includes(categorySearch.trim().toLowerCase()) || child.title.toLowerCase().includes(categorySearch.trim().toLowerCase())).map(child => (
                             <li key={child.id}>
                               <button type="button" className={navStyles.subcategoryTile} onClick={() => { setSelectedCategoryId(displayedCategory.id); setSelectedSubcategory(child); }}>
-                                <CategoryIconTile kind="subcategory" handle={child.handle} title={child.title} size="md" showLabel={false} />
+                                <CategoryArtwork category={child} kind="subcategory" className={navStyles.subcategoryArtwork} />
                                 <span>{child.title}</span>
                               </button>
                             </li>
@@ -944,7 +740,13 @@ export default function MobileBottomNav() {
                         {!(displayedCategory.children || []).length && <p className={navStyles.directoryMessage}>Discover everything in {displayedCategory.title} using Shop all.</p>}
                       </section>
                     )}
-                    {!selectedSubcategory && !displayedCategory && !categoriesLoading && <div className={navStyles.directoryMessage}><strong>No matching categories</strong><p>Try a different name, such as kettle or kitchen.</p><button type="button" onClick={() => setCategorySearch("")}>Clear search</button></div>}
+                    {!selectedSubcategory && !displayedCategory && !categoriesLoading && (
+                      <div className={navStyles.directoryMessage}>
+                        {categoriesError ? <><strong>Categories couldn’t load</strong><button type="button" onClick={() => void refetchCategories()}>Try again</button></> :
+                          categorySearch ? <><strong>No matching categories</strong><p>Try a different name, such as kettle or kitchen.</p><button type="button" onClick={() => setCategorySearch("")}>Clear search</button></> :
+                            <strong>No categories available</strong>}
+                      </div>
+                    )}
 
                     {selectedSubcategory && (
                       <div className={navStyles.resultsHeader}>
@@ -990,14 +792,13 @@ export default function MobileBottomNav() {
                           </div>
                         </div>
                         <div className={navStyles.categoryHeading}>
-                          {activeCategory ? (
-                            <p className={navStyles.categoryEyebrow}>{activeCategory.title}</p>
-                          ) : null}
-                          <div className={navStyles.categoryTitleRow}>
+                          <CategoryArtwork category={selectedSubcategory} kind="subcategory" className={navStyles.resultsArtwork} />
+                          <div className={navStyles.categoryTitle}>
+                            {activeCategory && <p className={navStyles.categoryEyebrow}>{activeCategory.title}</p>}
                             <h3>{selectedSubcategory.title}</h3>
-                            <span className={navStyles.resultCount} aria-live="polite">
-                              {productsLoading ? "Loading…" : `${filteredProducts.length} products`}
-                            </span>
+                            <p className={navStyles.resultCount} aria-live="polite">
+                              {productsLoading ? "Loading products…" : productsError ? "Products unavailable" : `Showing ${filteredProducts.length} ${filteredProducts.length === 1 ? "product" : "products"}`}
+                            </p>
                           </div>
                         </div>
                         {filtersOpen && (
@@ -1088,8 +889,16 @@ export default function MobileBottomNav() {
                     {selectedSubcategory ? (
                       <div className={navStyles.productGrid} aria-busy={productsLoading}>
                         {productsLoading ? (
-                          <div className="col-span-2">
+                          <div className={filtersOpen ? "col-span-full" : navStyles.centeredProductLoader}>
                             <BrandLoader compact label="Finding your products…" />
+                          </div>
+                        ) : productsError ? (
+                          <div className={navStyles.resultMessage}>
+                            <strong>Products couldn’t load</strong>
+                            <button type="button" onClick={() => {
+                              setSettledSubcategory(null);
+                              setProductsRetry(count => count + 1);
+                            }}>Try again</button>
                           </div>
                         ) : filteredProducts.length === 0 ? (
                           <div className={navStyles.resultMessage}>
@@ -1098,29 +907,12 @@ export default function MobileBottomNav() {
                             <span>Try another brand or price range.</span>
                           </div>
                         ) : (
-                          filteredProducts.map((p) => (
-                            <Link
-                              key={p.id}
-                              href={`/productDetail/${encodeURIComponent(p.id)}?id=${encodeURIComponent(p.id)}`}
-                              className={navStyles.productCard}
-                              onClick={closeCategory}
-                            >
-                              <CategoryProductImage key={p.image} src={p.image} name={p.name} />
-                              <div className={navStyles.productInfo}>
-                                <p className={navStyles.productName}>{p.name}</p>
-                                <div className={navStyles.productPrice}>
-                                  <strong>{formatCurrency(p.price)}</strong>
-                                  {p.mrp && p.mrp > (p.price || 0) ? (
-                                    <del>{formatCurrency(p.mrp)}</del>
-                                  ) : null}
-                                </div>
-                                {p.mrp && p.mrp > (p.price || 0) ? (
-                                  <span className={navStyles.productSaving}>
-                                    Save {formatCurrency(p.mrp - (p.price || 0))}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </Link>
+                          filteredProducts.map(product => (
+                            <ProductCard key={product.id} {...product} prefetch={false}
+                              sourceTag="category:mobile"
+                              sourceCategoryId={selectedSubcategory.id}
+                              sourceCategoryHandle={selectedSubcategory.handle}
+                            />
                           ))
                         )}
                       </div>
@@ -1129,14 +921,14 @@ export default function MobileBottomNav() {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </Overlay>
 
       {/* Profile sheet */}
       <Overlay
         open={profileOpen}
         onClose={closeProfile}
-        panelClassName="bg-[var(--oweg-surface-subtle)]"
+        panelClassName="bg-white"
       >
         <MobileProfileSheet
           customer={customer}
@@ -1151,13 +943,13 @@ export default function MobileBottomNav() {
             closeProfile();
             router.replace(buildSignupUrl(pathname));
           }}
-          onSignOut={async () => {
-            await logout();
-            setProfileOpen(false);
-            router.refresh();
-          }}
+          onSignOut={() => setSignOutOpen(true)}
         />
       </Overlay>
+      <LogoutConfirmModal open={signOutOpen} onClose={() => setSignOutOpen(false)} onSignedOut={() => {
+        setProfileOpen(false);
+        router.refresh();
+      }} />
     </>
   );
 }

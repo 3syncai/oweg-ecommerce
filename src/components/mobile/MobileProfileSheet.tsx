@@ -15,8 +15,10 @@ import {
   Lock,
   LogOut,
   Mail,
+  MapPin,
   Package,
   Percent,
+  Headphones,
   Phone,
   RefreshCw,
   ShoppingBag,
@@ -31,15 +33,14 @@ import {
   X,
 } from "lucide-react";
 
-import { storefrontPolicyLinks, storefrontQuickLinks } from "@/lib/storefront-links";
+import { storefrontAffiliateLink, storefrontPolicyLinks, storefrontQuickLinks, storefrontRegisteredAddress, storefrontRewardLink, storefrontSupport } from "@/lib/storefront-links";
 
 type ProfileLink = { label: string; href: string };
 
 const accountLinks: ProfileLink[] = [
   { label: "Notifications", href: "/account/notifications" },
-  { label: "Brands", href: "/brands" },
-  { label: "Affiliates", href: "/affiliates" },
-  { label: "My Reward", href: "/my-reward" },
+  storefrontAffiliateLink,
+  storefrontRewardLink,
   { label: "My Wishlist", href: "/wishlist" },
 ];
 
@@ -50,7 +51,7 @@ const iconTone = "h-4 w-4 text-[var(--oweg-green-dark)]";
 
 function IconTile({ children }: { children: ReactNode }) {
   return (
-    <span className="oweg-icon-tile flex h-10 w-10 shrink-0 items-center justify-center">
+    <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center">
       {children}
     </span>
   );
@@ -59,7 +60,6 @@ function IconTile({ children }: { children: ReactNode }) {
 function accountIcon(label: string) {
   const lower = label.toLowerCase();
   if (lower.includes("notification")) return <Bell className={iconTone} />;
-  if (lower.includes("brand")) return <Store className={iconTone} />;
   if (lower.includes("reward")) return <Trophy className={iconTone} />;
   if (lower.includes("wishlist")) return <Heart className={iconTone} />;
   if (lower.includes("affiliate")) return <Users className={iconTone} />;
@@ -100,13 +100,13 @@ function ProfileLinkRow({
     <Link
       href={href}
       onClick={onNavigate}
-      className="flex min-h-[48px] items-center gap-3 px-3.5 py-2.5 transition-colors active:bg-[var(--oweg-surface-tint)]"
+      className="flex min-h-12 items-center gap-3 px-1 py-2 transition-colors hover:bg-[var(--oweg-surface-tint)] active:bg-[var(--oweg-surface-tint)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#145448]"
     >
       <IconTile>{icon}</IconTile>
       <span className="min-w-0 flex-1 text-sm font-medium text-[var(--oweg-ink)]">
         {label}
       </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-[var(--oweg-ink-muted)]" />
+      <ChevronRight aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--oweg-ink-muted)]" />
     </Link>
   );
 }
@@ -123,11 +123,11 @@ function LinkSection({
   onNavigate: () => void;
 }) {
   return (
-    <section className="space-y-2">
-      <p className="px-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--oweg-ink-muted)]">
+    <section className="space-y-1">
+      <h2 className="px-1 text-sm font-bold tracking-tight text-[#153f34]">
         {title}
-      </p>
-      <div className="oweg-surface-card overflow-hidden divide-y divide-[var(--oweg-border)]">
+      </h2>
+      <div className="divide-y divide-[var(--oweg-border)]">
         {links.map((link) => (
           <ProfileLinkRow
             key={link.href}
@@ -147,33 +147,23 @@ function QuickActionTile({
   label,
   icon,
   onNavigate,
-  as = "link",
 }: {
   href: string;
   label: string;
   icon: ReactNode;
   onNavigate: () => void;
-  as?: "link" | "a";
 }) {
   const className =
-    "oweg-surface-card flex min-h-[88px] flex-col items-center justify-center gap-2 p-3 text-center transition active:scale-[0.98] active:bg-[var(--oweg-surface-tint)]";
+    "flex min-h-[68px] min-w-0 flex-col items-center justify-center gap-2 rounded-lg px-1 py-2 text-center transition-colors hover:bg-[var(--oweg-surface-tint)] active:bg-[var(--oweg-surface-tint)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145448]";
 
   const body = (
     <>
-      <span className="oweg-icon-tile flex h-12 w-12 items-center justify-center">
+      <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-full bg-[#edf4e9]">
         {icon}
       </span>
-      <span className="text-xs font-semibold text-[var(--oweg-ink)]">{label}</span>
+      <span className="break-words text-xs font-semibold leading-tight text-[var(--oweg-ink)]">{label}</span>
     </>
   );
-
-  if (as === "a") {
-    return (
-      <a href={href} onClick={onNavigate} className={className}>
-        {body}
-      </a>
-    );
-  }
 
   return (
     <Link href={href} onClick={onNavigate} className={className}>
@@ -201,42 +191,51 @@ export default function MobileProfileSheet({
   onSignup,
   onSignOut,
 }: MobileProfileSheetProps) {
+  const initials = customerName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => Array.from(part)[0]).join("").toLocaleUpperCase();
   const quickTileIcon = "h-5 w-5 text-[var(--oweg-green-dark)]";
 
   return (
-    <div className="-mx-4 min-h-full space-y-5 bg-[var(--oweg-surface-subtle)] px-5 pb-4">
-      <div className="flex items-center justify-end">
+    <div className="mx-auto max-w-xl space-y-5 pb-4">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-extrabold tracking-tight text-[#153f34]">Account</h1>
         <button
           type="button"
           aria-label="Close profile"
           onClick={onClose}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--oweg-border)] bg-white text-[var(--oweg-ink)] shadow-sm transition active:scale-[0.97]"
+          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-[#edf4e9] text-[#153f34] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#145448]"
         >
-          <X className="h-4 w-4" />
+          <X aria-hidden="true" className="size-4" />
         </button>
       </div>
 
-      {/* Header card */}
-      <header className="rounded-[var(--oweg-radius-lg)] border border-[rgba(122,201,67,0.22)] bg-[var(--oweg-surface-tint)]/90 px-4 py-4 backdrop-blur-sm">
-        <h1 className="text-xl font-bold tracking-tight text-[var(--oweg-ink)] sm:text-2xl">
-          {customer ? `Hi, ${customerName}` : "Welcome back"}
-        </h1>
-        <p className="mt-1 text-sm text-[var(--oweg-ink-muted)]">
-          Deliver to {deliverLocation}
-        </p>
+      <header className="rounded-2xl bg-[#123e34] px-4 py-5 text-white sm:px-5">
+        <div className="flex items-center gap-3">
+          <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-[#dcedd2] text-sm font-extrabold text-[#174737]">
+            {customer && initials ? initials : <User className="size-5" />}
+          </span>
+          <div className="min-w-0">
+            <h2 className="break-words text-lg font-bold tracking-tight">
+              {customer ? customerName : "Welcome to OWEG"}
+            </h2>
+            <p className="mt-1 flex items-start gap-1.5 text-xs leading-relaxed text-[#d6e9df]">
+              <MapPin aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+              <span className="min-w-0 break-words">Deliver to {deliverLocation}</span>
+            </p>
+          </div>
+        </div>
 
         {!customer ? (
-          <div className="mt-4 flex gap-3">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
-              className="oweg-tap flex min-h-[44px] flex-1 items-center justify-center rounded-[var(--oweg-radius-sm)] bg-[var(--oweg-green)] px-4 text-sm font-semibold text-white transition hover:bg-[var(--oweg-green-dark)]"
+              className="oweg-tap min-h-11 rounded-lg bg-[#dcedd2] px-2 text-sm font-semibold text-[#123e34] hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               onClick={onLogin}
             >
               Login
             </button>
             <button
               type="button"
-              className="oweg-tap flex min-h-[44px] flex-1 items-center justify-center rounded-[var(--oweg-radius-sm)] border border-[var(--oweg-border-strong)] bg-white px-4 text-sm font-semibold text-[var(--oweg-green-dark)] transition hover:bg-[var(--oweg-surface-tint)]"
+              className="oweg-tap min-h-11 rounded-lg border border-white/40 px-2 text-sm font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               onClick={onSignup}
             >
               Sign up
@@ -245,12 +244,8 @@ export default function MobileProfileSheet({
         ) : null}
       </header>
 
-      {/* Quick actions 2x2 */}
-      <section className="space-y-2">
-        <p className="px-1 text-[11px] font-bold uppercase tracking-[0.06em] text-[var(--oweg-ink-muted)]">
-          Quick actions
-        </p>
-        <div className="grid grid-cols-2 gap-3">
+      <nav aria-label="Account shortcuts" className="border-b border-[var(--oweg-border)] pb-4">
+        <div className={customer ? "grid grid-cols-4 gap-2" : "grid grid-cols-3 gap-2"}>
           {customer ? (
             <QuickActionTile
               href="/account"
@@ -272,28 +267,27 @@ export default function MobileProfileSheet({
             onNavigate={onClose}
           />
           <QuickActionTile
-            href="mailto:owegonline@oweg.in"
+            href="/account/help"
             label="Support"
-            icon={<Phone className={quickTileIcon} />}
+            icon={<Headphones className={quickTileIcon} />}
             onNavigate={onClose}
-            as="a"
           />
         </div>
-      </section>
+      </nav>
 
       <LinkSection
-        title="My Account"
+        title="Explore OWEG"
         links={accountLinks}
         iconFor={accountIcon}
         onNavigate={onClose}
       />
-      <details className="group/help oweg-surface-card">
-        <summary className="flex min-h-[56px] cursor-pointer list-none items-center gap-3 rounded-[var(--oweg-radius-lg)] px-4 py-3 text-sm font-semibold text-[var(--oweg-ink)] marker:content-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-[var(--oweg-green)]">
+      <details className="group/help border-y border-[var(--oweg-border)]">
+        <summary className="flex min-h-[54px] cursor-pointer list-none items-center gap-3 px-1 py-3 text-sm font-semibold text-[var(--oweg-ink)] marker:content-none [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-[var(--oweg-green)]">
           <HelpCircle className={iconTone} />
           <span className="flex-1">Help &amp; policies</span>
           <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open/help:rotate-180" />
         </summary>
-        <div className="space-y-5 border-t border-[var(--oweg-border)] p-3">
+        <div className="space-y-5 border-t border-[var(--oweg-border)] px-1 py-4">
           <LinkSection
             title="Policy"
             links={policyLinks}
@@ -309,21 +303,22 @@ export default function MobileProfileSheet({
         </div>
       </details>
 
-      {/* Support footer */}
-      <section className="oweg-surface-card space-y-3 p-4 text-sm text-[var(--oweg-ink-muted)]">
-        <p className="font-semibold text-[var(--oweg-ink)]">Support</p>
-        <p>Ascent Retechno India Pvt Ltd</p>
-        <p className="leading-relaxed">
-          Av Pride, B-12, Ground Floor, Opp. Rahul, International School,
-          Nilemore 4th Road, Nalasopara West, Thane, Maharashtra - 401203.
-        </p>
+      <section className="space-y-2 px-1 text-sm text-[var(--oweg-ink-muted)]">
+        <h2 className="font-bold text-[#153f34]">Registered Address</h2>
+        <address className="space-y-1 leading-relaxed not-italic">
+          <p>{storefrontRegisteredAddress.company}</p>
+          <p>{storefrontRegisteredAddress.address}</p>
+        </address>
+      </section>
+      <section className="space-y-2 px-1 text-sm text-[var(--oweg-ink-muted)]">
+        <h2 className="font-bold text-[#153f34]">Contact support</h2>
         <a
-          href="mailto:owegonline@oweg.in"
+          href={`mailto:${storefrontSupport.email}`}
           className="inline-flex min-h-[44px] items-center gap-2 font-semibold text-[var(--oweg-green-dark)]"
           onClick={onClose}
         >
           <Mail className="h-4 w-4" />
-          owegonline@oweg.in
+          {storefrontSupport.email}
         </a>
         <div className="-ml-2 flex items-center gap-0.5">
           {[
@@ -352,9 +347,9 @@ export default function MobileProfileSheet({
           onClick={() => {
             void onSignOut();
           }}
-          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-[var(--oweg-radius-sm)] border border-red-300 bg-transparent px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+          className="flex min-h-[48px] w-full items-center gap-3 rounded-lg px-2 text-sm font-semibold text-[#82383a] hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#82383a]"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4" aria-hidden="true" />
           Sign out
         </button>
       ) : null}

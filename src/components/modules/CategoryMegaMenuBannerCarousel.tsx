@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import { openStorefrontLink } from "@/lib/open-storefront-link";
 import {
   preloadMegaMenuBannerImages,
@@ -166,14 +166,14 @@ export default function CategoryMegaMenuBannerCarousel({
                   {image}
                 </a>
               ) : (
-                <Link
+                <CategoryLink
                   href={bannerHref}
                   className={`${linkClassName} h-full`}
                   onClick={onNavigate}
                   tabIndex={isActive ? 0 : -1}
                 >
                   {image}
-                </Link>
+                </CategoryLink>
               )}
             </div>
           );

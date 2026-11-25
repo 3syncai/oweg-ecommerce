@@ -45,6 +45,7 @@ export async function disableBrowserPush({ signOut = true } = {}) {
 /** Native permission is requested synchronously from the Enable click, and never requested again when granted. */
 export function enableBrowserPush(options: PushOptions = {}): Promise<void> {
   if (!isStandalonePwa()) return Promise.reject(new Error('Open the installed OWEG app to enable notifications.'))
+  if (Notification.permission === 'denied') return Promise.reject(new Error('Allow OWEG notifications in your browser or device settings first.'))
   const key = options.customerId || 'manual'
   const existing = pending.get(key)
   if (existing) return existing

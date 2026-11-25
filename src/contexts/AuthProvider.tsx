@@ -12,7 +12,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { queueWishlist, wishlistIds } from "@/lib/wishlist-client"
 import { queueCartWrite } from "@/lib/cart-client"
-import { clearUserSessionCache } from "@/lib/client-session-cache"
+import { clearCustomerSessionQueries, clearUserSessionCache } from "@/lib/client-session-cache"
 import { disableBrowserPush, resumeBrowserPushSession } from "@/lib/browser-push"
 
 export type StoreCustomer = {
@@ -29,7 +29,10 @@ type AuthContextValue = {
   customer: StoreCustomer
   initializing: boolean
   refreshing: boolean
-  refresh: () => Promise<void>
+  refresh: (options?: { afterSignIn?: boolean }) => Promise<void>
+  signIn: { customerId: string } | null
+  expiredCustomerId: string | null
+  expireSession: (customerId: string) => void
   setCustomer: (customer: StoreCustomer) => void
   updateWishlist: (id: string, update: (ids: string[]) => string[]) => void
   logout: () => Promise<void>
@@ -45,35 +48,71 @@ async function fetchSession(): Promise<StoreCustomer> {
     method: "GET",
     cache: "no-store",
     credentials: "include",
+    signal: AbortSignal.timeout(10_000),
   })
-  if (!res.ok) return null
+  if (res.status === 401) return null
+  if (!res.ok) throw new Error("Session verification unavailable")
   const data = (await res.json()) as { customer?: StoreCustomer }
-  return (data?.customer as StoreCustomer) ?? null
+  if (data?.customer === null) return null
+  if (typeof data?.customer?.id !== "string" || !data.customer.id) {
+    throw new Error("Invalid session response")
+  }
+  return data.customer
 }
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient()
   const [customer, setCustomer] = useState<StoreCustomer>(null)
+  const [signIn, setSignIn] = useState<AuthContextValue["signIn"]>(null)
+  const [expiredCustomerId, setExpiredCustomerId] = useState<string | null>(null)
   useEffect(() => { if (customer?.id) resumeBrowserPushSession() }, [customer?.id])
   const [initializing, setInitializing] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const customerRef = useRef<StoreCustomer>(null)
   const wishlistRevision = useRef(0)
+  const authRevision = useRef(0)
+
+  const expireSession = useCallback((customerId: string) => {
+    if (customerRef.current?.id !== customerId) return
+    authRevision.current++
+    customerRef.current = null
+    setExpiredCustomerId(customerId)
+    setCustomer(null)
+    setSignIn(null)
+    clearCustomerSessionQueries(queryClient, customerId)
+  }, [queryClient])
 
   // Every state writer also updates the ref synchronously so queued wishlist
   // intents cannot cross an account switch before React renders again.
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { afterSignIn?: boolean }) => {
+    const authAtStart = authRevision.current
     setRefreshing(true)
     try {
       const prevCustomer = customerRef.current
       const revision = wishlistRevision.current
       let next = await fetchSession()
+      if (authAtStart !== authRevision.current) {
+        if (options?.afterSignIn) throw new Error("Sign-in changed. Please try again.")
+        return
+      }
       const current = customerRef.current
+      if (options?.afterSignIn && !next) throw new Error("Couldn’t verify sign-in. Please try again.")
+      if (!next && current) {
+        expireSession(current.id)
+        return
+      }
       if (next && current?.id === next.id && revision !== wishlistRevision.current) {
         next = { ...next, metadata: { ...next.metadata, wishlist: current.metadata?.wishlist } }
       }
+      if (next?.id !== current?.id) {
+        authRevision.current++
+        if (current) clearCustomerSessionQueries(queryClient, current.id)
+      }
       customerRef.current = next
       setCustomer(next)
+      if (next) setExpiredCustomerId(null)
+      if (options?.afterSignIn && next) setSignIn({ customerId: next.id })
+      if (!next) setSignIn(null)
       
       // If user just logged in (was null, now has customer), merge guest cart
       if (!prevCustomer && next) {
@@ -108,15 +147,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           }
         }).finally(() => { void queryClient.invalidateQueries({ queryKey: ["cart"] }) })
       }
-    } catch (err) {
-      console.warn("Failed to refresh session", err)
-      customerRef.current = null
-      setCustomer(null)
+    } catch (error) {
+      // A network error or upstream outage is not evidence of session expiry.
+      if (options?.afterSignIn) throw error
     } finally {
       setRefreshing(false)
       setInitializing(false)
     }
-  }, [queryClient])
+  }, [expireSession, queryClient])
 
   useEffect(() => {
     void refresh()
@@ -126,25 +164,37 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   const logout = useCallback(async () => {
     const previousCustomerId = customerRef.current?.id ?? null
+    authRevision.current++
     try {
       await disableBrowserPush().catch(() => undefined)
-      await fetch(LOGOUT_ENDPOINT, {
+      if ((customerRef.current?.id ?? null) !== previousCustomerId) throw new Error("Account changed")
+      const response = await fetch(LOGOUT_ENDPOINT, {
         method: "POST",
         credentials: "include",
+        signal: AbortSignal.timeout(10_000),
       })
-    } catch (err) {
-      console.warn("Failed to logout", err)
-    } finally {
+      if (!response.ok) throw new Error("Unable to confirm sign-out")
+      if ((customerRef.current?.id ?? null) !== previousCustomerId) throw new Error("Account changed")
+      authRevision.current++
       clearUserSessionCache(queryClient, previousCustomerId)
       customerRef.current = null
       setCustomer(null)
+      setSignIn(null)
+      setExpiredCustomerId(null)
+    } catch (error) {
+      if (customerRef.current?.id === previousCustomerId) resumeBrowserPushSession()
+      throw error
     }
   }, [queryClient])
 
   const setCustomerState = useCallback((value: StoreCustomer) => {
+    authRevision.current++
     const prevCustomer = customerRef.current
+    if (prevCustomer && prevCustomer.id !== value?.id) clearCustomerSessionQueries(queryClient, prevCustomer.id)
     customerRef.current = value
     setCustomer(value)
+    setSignIn(value ? { customerId: value.id } : null)
+    setExpiredCustomerId(null)
     setInitializing(false)
     
     // If user just logged in (was null, now has customer), merge guest cart
@@ -214,6 +264,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const value = useMemo<AuthContextValue>(
     () => ({
       customer,
+      signIn,
+      expiredCustomerId,
+      expireSession,
       initializing,
       refreshing,
       refresh,
@@ -221,7 +274,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       updateWishlist,
       logout,
     }),
-    [customer, initializing, refreshing, refresh, setCustomerState, updateWishlist, logout]
+    [customer, signIn, expiredCustomerId, expireSession, initializing, refreshing, refresh, setCustomerState, updateWishlist, logout]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

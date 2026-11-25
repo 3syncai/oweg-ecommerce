@@ -1,3 +1,4 @@
+import { checkoutStockIssue } from "@/lib/medusa-payment";
 import { checkoutOrderAccessError } from "@/lib/checkout-order-access";
 import { NextResponse } from "next/server";
 import { createRazorpayOrder, fetchRazorpayOrder, getPublicRazorpayKey } from "@/lib/razorpay";
@@ -188,6 +189,10 @@ async function createRazorpayOrderForMedusa(
     );
   }
 
+  if (["captured", "paid", "authorized"].includes(razorpayPaymentStatus)) {
+    return jsonResult(409, { error: "Payment already received. Check your orders before trying again." });
+  }
+
   const reused = await tryReuseCachedRazorpayOrder({
     cachedRazorpayOrderId,
     totalRupees,
@@ -301,6 +306,10 @@ export async function POST(req: Request) {
     }
 
     const result = await work;
+    if (result.status === 200) {
+      const issue = await checkoutStockIssue(medusaOrderId);
+      if (issue) return NextResponse.json(issue, { status: issue.status });
+    }
     return NextResponse.json(result.body, { status: result.status });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unable to create Razorpay order";

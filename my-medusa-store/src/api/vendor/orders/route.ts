@@ -22,8 +22,13 @@ import type ReturnModuleService from "../../../modules/returns/service"
 import {
   buildCustomerReliability,
   customerReliabilityKey,
+  filterReturnRequestsForVendorScope,
   newCustomerReliability,
 } from "../../../lib/customer-reliability"
+import {
+  loadOwnedReturnRequestItems,
+  ownedReturnRequestIdSet,
+} from "../../../lib/vendor-owned-returns"
 
 const EMPTY_COUNTS: Record<VendorOrderStage | "total", number> = {
   total: 0,
@@ -178,6 +183,15 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
     const returnRequests = orderIds.length
       ? await returnService.listReturnRequests({ order_id: orderIds })
       : []
+    const ownedReturnItems = await loadOwnedReturnRequestItems(
+      pool,
+      (returnRequests || []).map((r: any) => r.id).filter(Boolean),
+      vendorProductIds
+    )
+    const vendorScopedReturns = filterReturnRequestsForVendorScope(
+      returnRequests as any[],
+      ownedReturnRequestIdSet(ownedReturnItems)
+    )
     const reliabilityByCustomer = buildCustomerReliability(
       visibleLight.map((order: any) => ({
         id: order.id,
@@ -185,7 +199,7 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         email: order.email,
         delivered: formattedById.get(order.id)?.vendor_stage === "delivered",
       })),
-      returnRequests as any[]
+      vendorScopedReturns as any[]
     )
 
     if (countsOnly) {

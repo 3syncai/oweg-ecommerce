@@ -1,4 +1,4 @@
-import type { OrderAddress, OrderDetail } from "@/lib/order-types";
+import type { OrderAddress, OrderDetail, OrderItem } from "@/lib/order-types";
 
 export function sanitizeTextInput(value: string, maxLength: number) {
   const withoutControlChars = [...value]
@@ -142,6 +142,20 @@ export function buildOrderHref(orderId: string, displayId?: number | null) {
   const base = `/account/orders/${encodeURIComponent(orderId)}`;
   if (displayId != null) return `${base}?orderNo=${displayId}`;
   return base;
+}
+
+export function buildOrderItemProductHref(item?: OrderItem): string | null {
+  const productId = item?.product_id?.trim();
+  const handle = item?.product_handle?.trim();
+  const id = productId && /^prod_[a-z0-9_-]+$/i.test(productId) ? productId : null;
+  const key = id ?? (handle && /^[\p{L}\p{N}_-]+[\p{L}\p{N}_&. -]*$/u.test(handle) ? handle : null);
+  if (!key) return null;
+  return `/productDetail/${encodeURIComponent(key)}`;
+}
+
+export function buildOrderItemReviewHref(item?: OrderItem): string | null {
+  const href = buildOrderItemProductHref(item);
+  return href ? `${href}?tab=reviews#write-review` : null;
 }
 
 export function buildTrackHref(orderId: string, displayId?: number | null) {

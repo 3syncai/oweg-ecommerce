@@ -124,7 +124,8 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editValue, setEditValue] = useState<number>(0)
+  const [editValue, setEditValue] = useState("")
+  const validQuantity = /^\d+$/.test(editValue) && Number.isSafeInteger(Number(editValue))
   const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchDebounced, setSearchDebounced] = useState("")
@@ -163,9 +164,9 @@ export default function InventoryPage() {
       } else {
         console.error("Failed to fetch inventory")
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error fetching inventory:", error)
-      if (error.status === 401) {
+      if (error && typeof error === "object" && "status" in error && error.status === 401) {
         router.push("/login")
       }
     } finally {
@@ -189,16 +190,17 @@ export default function InventoryPage() {
 
   const handleEdit = (item: InventoryItem) => {
     setEditingId(item.variant_id)
-    setEditValue(normalizeStock(item.stock_quantity))
+    setEditValue(String(normalizeStock(item.stock_quantity)))
   }
 
   const handleCancel = () => {
     setEditingId(null)
-    setEditValue(0)
+    setEditValue("")
   }
 
   const handleSave = async (variantId: string) => {
-    const nextQty = normalizeStock(editValue)
+    if (!validQuantity || saving) return
+    const nextQty = Number(editValue)
     try {
       setSaving(true)
       const data = await vendorInventoryApi.update(variantId, nextQty)
@@ -210,13 +212,14 @@ export default function InventoryPage() {
           )
         )
         setEditingId(null)
-        setEditValue(0)
+        setEditValue("")
       } else {
         alert("Failed to update stock")
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error updating inventory:", error)
-      alert(error.message || "Error updating stock")
+      const message = error && typeof error === "object" && "message" in error ? error.message : null
+      alert(typeof message === "string" && message ? message : "Error updating stock")
     } finally {
       setSaving(false)
     }
@@ -582,21 +585,19 @@ export default function InventoryPage() {
 
                               <div>
                                 {editingId === item.variant_id ? (
+                                  <>
                                   <Input
-                                    type="number"
+                                    type="text"
                                     min={0}
                                     value={editValue}
-                                    onChange={(e) => {
-                                      const raw = e.target.value
-                                      if (raw === "") {
-                                        setEditValue(0)
-                                        return
-                                      }
-                                      setEditValue(normalizeStock(parseInt(raw, 10)))
-                                    }}
+                                    inputMode="numeric"
+                                    aria-label="Stock quantity"
+                                    onChange={e => setEditValue(e.target.value)}
                                     className="h-8 w-24"
                                     autoFocus
                                   />
+                                  {validQuantity && Number(editValue) === 0 && <p role="status" className="mt-1 text-xs text-amber-700">Saving 0 will mark this item out of stock.</p>}
+                                  </>
                                 ) : (
                                   <div className="space-y-0.5">
                                     <Text className="font-mono text-sm">
@@ -622,13 +623,15 @@ export default function InventoryPage() {
                                       size="small"
                                       variant="primary"
                                       onClick={() => handleSave(item.variant_id)}
-                                      disabled={saving}
+                                      aria-label="Save stock quantity"
+                                      disabled={saving || !validQuantity}
                                     >
                                       {saving ? "..." : <Check />}
                                     </Button>
                                     <Button
                                       size="small"
                                       variant="secondary"
+                                      aria-label="Cancel stock edit"
                                       onClick={handleCancel}
                                       disabled={saving}
                                     >
@@ -639,6 +642,7 @@ export default function InventoryPage() {
                                   <Button
                                     size="small"
                                     variant="transparent"
+                                    aria-label={`Edit stock for ${item.variant_title || item.product_title}`}
                                     onClick={() => handleEdit(item)}
                                     className="text-ui-fg-subtle hover:text-ui-fg-base"
                                   >

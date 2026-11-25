@@ -13,8 +13,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const settings = await getDebugControllerSettings();
-  return NextResponse.json({ settings });
+  try {
+    const settings = await getDebugControllerSettings({ bypassCache: true });
+    return NextResponse.json({ settings });
+  } catch (error) {
+    console.error("[debug-controller/settings] GET failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load debug settings. Set ENABLE_DEBUG_CONTROLLER=true and DATABASE_URL on the storefront.",
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function PATCH(req: NextRequest) {
@@ -28,10 +41,22 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  const { updateDebugControllerSettings } = await import(
-    "@/lib/debug-controller/settings"
-  );
-  const settings = await updateDebugControllerSettings(body);
-
-  return NextResponse.json({ success: true, settings });
+  try {
+    const { updateDebugControllerSettings } = await import(
+      "@/lib/debug-controller/settings"
+    );
+    const settings = await updateDebugControllerSettings(body);
+    return NextResponse.json({ success: true, settings });
+  } catch (error) {
+    console.error("[debug-controller/settings] PATCH failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update debug settings. Set ENABLE_DEBUG_CONTROLLER=true on the storefront.",
+      },
+      { status: 500 }
+    );
+  }
 }

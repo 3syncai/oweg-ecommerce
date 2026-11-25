@@ -1,12 +1,10 @@
 "use client";
 
-import BrandLoader from "@/components/ui/BrandLoader";
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, Clock3, Headphones, Loader2, Package, RefreshCw, RotateCcw, Search, ShoppingBag, Truck, XCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, ClipboardList, Clock3, Headphones, Loader2, Package, RefreshCw, RotateCcw, Search, ShoppingBag, SlidersHorizontal, Star, Truck, XCircle } from "lucide-react";
 import { toast } from "sonner";
-import { AccountHubIcon } from "@/components/ui/icons/account-hub";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -25,7 +23,7 @@ import {
 } from "@/hooks/useAccountOrdersSummary";
 import { useAddToCart } from "@/hooks/useCartMutations";
 import { getOrderCardActions } from "@/lib/order-actions";
-import { buildOrderHref, buildTrackHref, resolveOrderLineItemsForCart } from "@/lib/order-utils";
+import { buildOrderHref, buildOrderItemProductHref, buildOrderItemReviewHref, buildTrackHref, resolveOrderLineItemsForCart } from "@/lib/order-utils";
 import { formatAccountCurrency, formatAccountDate } from "@/lib/account-utils";
 import { useAuth } from "@/contexts/AuthProvider";
 import { cn } from "@/lib/utils";
@@ -35,7 +33,6 @@ type OrdersContentProps = {
 };
 
 type StatusFilter = "all" | AccountOrderBucket;
-type DropdownStatusFilter = "all" | AccountOrderBucket;
 
 const STATUS_TABS: Array<{
   key: StatusFilter;
@@ -83,29 +80,66 @@ function isWithinLastSixMonths(createdAt?: string): boolean {
 }
 
 function OrdersSkeleton() {
-  return <BrandLoader compact label="Finding your orders…" />;
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      {[0, 1].map(index => (
+        <div key={index} className="rounded-2xl border border-slate-200 bg-white p-4 motion-safe:animate-pulse sm:p-5">
+          <div className="mb-4 h-4 w-28 rounded bg-slate-100" />
+          <div className="flex items-center gap-4">
+            <div className="size-14 shrink-0 rounded-xl bg-slate-100" />
+            <div className="flex-1 space-y-3">
+              <div className="h-4 w-3/4 rounded bg-slate-100" />
+              <div className="h-3 w-1/3 rounded bg-slate-100" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function OrderCard({
   order,
-  index,
 }: {
   order: AccountOrder;
-  index: number;
 }) {
   const addToCart = useAddToCart();
   const [imageFailed, setImageFailed] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const actionsButtonRef = useRef<HTMLButtonElement>(null);
   const bucket = resolveOrderBucket(order);
   const statusLabel = resolveOrderStatusLabel(order);
   const firstItem = order.items?.[0];
+  const productHref = buildOrderItemProductHref(firstItem);
   const imageSrc = firstItem?.thumbnail || "/oweg_logo.png";
   const variantId = resolveVariantId(order);
-  const orderLabel =
-    order.display_id != null ? `#${order.display_id}` : `#${index + 1}`;
+  const orderLabel = order.display_id == null ? null : `#${order.display_id}`;
   const detailHref = buildOrderHref(order.id, order.display_id);
+  const reviewLinks = bucket === "delivered"
+    ? [...new Set((order.items ?? []).map(buildOrderItemReviewHref).filter(Boolean))]
+    : [];
+  const reviewHref = reviewLinks.length > 1 ? `${detailHref}#order-items` : reviewLinks[0];
   const trackHref = buildTrackHref(order.id, order.display_id);
   const cardActions = getOrderCardActions(order);
   const StatusIcon = STATUS_STYLE[bucket].icon;
+  const trackFirst = cardActions.showTrack && (bucket === "processing" || bucket === "shipped");
+  const buyAgain = cardActions.showBuyAgain && Boolean(variantId);
+  const PrimaryActionIcon = trackFirst ? Truck : reviewHref ? Star : ClipboardList;
+  const moreActions = Boolean(reviewHref) || cardActions.showTrack || cardActions.showCancel || cardActions.showReturn || buyAgain;
+  const actionHref = (action: "cancel" | "return") => detailHref + (detailHref.includes("?") ? "&" : "?") + "action=" + action;
+  const secondaryAction = "flex min-h-11 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-green-600 disabled:opacity-60";
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    function closeOutside(event: PointerEvent) {
+      if (event.target instanceof Node && !actionsRef.current?.contains(event.target)) {
+        setActionsOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [actionsOpen]);
 
   const handleBuyAgain = async () => {
     if (!variantId) return;
@@ -118,51 +152,53 @@ function OrderCard({
     }
   };
 
+  const productSummary = (
+    <>
+      <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#f6f8f5] sm:size-[88px]">
+        {imageFailed ? (
+          <Package className="size-8 text-slate-300" aria-hidden />
+        ) : (
+          <Image src={imageSrc} alt="" fill className="object-contain p-2" sizes="88px" onError={() => setImageFailed(true)} />
+        )}
+      </div>
+      <h2 className="line-clamp-2 min-w-0 break-words text-sm font-semibold leading-relaxed text-slate-900 group-hover:text-[#145448] group-hover:underline">
+        {firstItem?.title || (orderLabel ? `Order ${orderLabel}` : "Order details")}
+      </h2>
+    </>
+  );
+
   return (
-    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow hover:shadow-[0_4px_20px_-8px_rgba(15,23,42,0.12)]">
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3.5 sm:grid-cols-[1fr_1fr_auto] sm:px-5">
+    <article className="rounded-xl border border-[#dce7df] bg-white">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 rounded-t-xl border-b border-[#e7eee8] bg-[#f7faf7] px-4 py-3 sm:px-5">
         <div>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Order placed</p>
+          <p className="text-[11px] font-medium text-slate-600">Order placed</p>
           <p className="mt-1 text-xs font-medium text-slate-700">{formatAccountDate(order.created_at)}</p>
         </div>
         <div className="text-right sm:text-left">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Order total</p>
+          <p className="text-[11px] font-medium text-slate-600">Order total</p>
           <p className="mt-1 text-xs font-semibold tabular-nums text-slate-900">{formatAccountCurrency(order.total, order.currency_code)}</p>
         </div>
-        <div className="col-span-2 flex items-center gap-2 sm:col-span-1 sm:block sm:text-right">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Order number</p>
-          <p className="text-xs font-semibold text-slate-700 sm:mt-1">{orderLabel}</p>
-        </div>
+        {orderLabel && <div className="order-first min-w-0">
+          <p className="text-[11px] font-medium text-slate-600">Order number</p>
+          <p className="mt-1 break-all text-xs font-bold text-[#145448]">{orderLabel}</p>
+        </div>}
       </div>
 
-      <div className="flex items-start gap-4 px-4 py-5 sm:gap-5 sm:px-5 sm:py-6">
-        <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50 sm:h-[88px] sm:w-[88px]">
-          {imageFailed ? (
-            <Package className="h-8 w-8 text-slate-300" aria-label="Product image unavailable" />
-          ) : (
-            <Image
-              src={imageSrc}
-              alt={firstItem?.title || "Order item"}
-              fill
-              className="object-contain p-2"
-              sizes="88px"
-              onError={() => setImageFailed(true)}
-            />
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:justify-between sm:gap-4">
-            <h2 className="line-clamp-2 text-sm font-semibold leading-relaxed text-slate-900">
-              {firstItem?.title || `Order ${orderLabel}`}
-            </h2>
+      <div className="px-4 py-4 sm:px-5">
+        {productHref ? (
+          <Link href={productHref} prefetch={false} className="group flex items-center gap-3 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 sm:gap-4">
+            {productSummary}
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3 sm:gap-4">{productSummary}</div>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset", STATUS_STYLE[bucket].className)}>
               <StatusIcon className="h-3.5 w-3.5" aria-hidden />
               {statusLabel}
             </span>
-          </div>
           {(order.items?.length || 0) > 1 ? (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="text-xs text-slate-500">
               +{(order.items?.length || 0) - 1} more item
               {(order.items?.length || 0) - 1 > 1 ? "s" : ""}
             </p>
@@ -170,59 +206,41 @@ function OrderCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-3 sm:px-5">
-        {cardActions.showTrack ? (
-          <Link
-            href={trackHref}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3.5 py-2 text-xs font-semibold text-green-800 transition hover:bg-green-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
-          >
-            <AccountHubIcon name="track-order" size={16} className="h-4 w-4" />
-            Track Order
-          </Link>
-        ) : null}
-        {cardActions.showViewDetails ? (
-          <Link
-            href={detailHref}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
-          >
-            <AccountHubIcon name="view-details" size={16} className="h-4 w-4" />
-            View Details
-          </Link>
-        ) : null}
-        {cardActions.showCancel ? (
-          <Link
-            href={`${detailHref}${detailHref.includes("?") ? "&" : "?"}action=cancel`}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-500 transition hover:bg-rose-50 hover:text-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
-          >
-            <AccountHubIcon name="cancel-order" size={16} className="h-4 w-4" />
-            Cancel Order
-          </Link>
-        ) : null}
-        {cardActions.showReturn ? (
-          <Link
-            href={`${detailHref}${detailHref.includes("?") ? "&" : "?"}action=return`}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-orange-200 bg-white px-3.5 py-2 text-xs font-medium text-orange-800 transition hover:bg-orange-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
-          >
-            <AccountHubIcon name="return-refund" size={16} className="h-4 w-4" />
-            Return / Replace
-          </Link>
-        ) : null}
-        {cardActions.showBuyAgain && variantId ? (
-          <button
-            type="button"
-            disabled={addToCart.isPending}
-            aria-busy={addToCart.isPending || undefined}
-            onClick={() => void handleBuyAgain()}
-            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-[#326b29] px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-[#285722] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:cursor-wait disabled:opacity-60 sm:ml-auto"
-          >
-            {addToCart.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <AccountHubIcon name="buy-again" size={16} className="h-4 w-4 brightness-0 invert" />
-            )}
-            {addToCart.isPending ? "Adding…" : "Buy Again"}
-          </button>
-        ) : null}
+      <div className={cn(
+        "grid items-stretch gap-2 border-t border-slate-100 px-3 py-3 sm:flex sm:items-start sm:px-5",
+        moreActions && "grid-cols-[minmax(0,1fr)_auto]",
+      )}>
+        <Link href={trackFirst ? trackHref : reviewHref || detailHref} prefetch={reviewHref ? false : undefined} aria-label={trackFirst || reviewHref ? undefined : "View order details"} className="inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl bg-[#145448] px-2.5 py-2 text-center text-xs font-semibold text-white hover:bg-[#103e36] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 sm:gap-2 sm:px-3 sm:text-sm">
+          <PrimaryActionIcon className="size-4 shrink-0" aria-hidden="true" />
+          {trackFirst ? "Track order" : reviewHref ? (reviewLinks.length > 1 ? "Rate & review items" : "Rate & review") : <><span className="sm:hidden">Order details</span><span className="hidden sm:inline">View order details</span></>}
+        </Link>
+        {moreActions && (
+          <div ref={actionsRef} className="relative min-w-0 sm:ml-auto" onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setActionsOpen(false);
+          }} onKeyDown={(event) => {
+            if (event.key === "Escape" && actionsOpen) {
+              event.stopPropagation();
+              setActionsOpen(false);
+              actionsButtonRef.current?.focus();
+            }
+          }}>
+            <button type="button" ref={actionsButtonRef} aria-expanded={actionsOpen} onClick={() => setActionsOpen(open => !open)} className="flex h-full min-h-11 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 sm:gap-2 sm:px-3 sm:text-sm">
+              More actions <ChevronDown className={cn("size-4 shrink-0", actionsOpen && "rotate-180")} aria-hidden />
+            </button>
+            {actionsOpen && <div className="absolute right-0 top-full z-20 mt-2 grid w-48 gap-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+              {(trackFirst || reviewHref) && cardActions.showViewDetails && <Link href={detailHref} className={secondaryAction} onClick={() => setActionsOpen(false)}><Package className="size-4" aria-hidden /> View order details</Link>}
+              {!trackFirst && cardActions.showTrack && <Link href={trackHref} className={secondaryAction} onClick={() => setActionsOpen(false)}><Truck className="size-4" aria-hidden /> Track order</Link>}
+              {cardActions.showCancel && <Link href={actionHref("cancel")} className={secondaryAction} onClick={() => setActionsOpen(false)}><XCircle className="size-4" aria-hidden /> Cancel order</Link>}
+              {cardActions.showReturn && <Link href={actionHref("return")} className={secondaryAction} onClick={() => setActionsOpen(false)}><RotateCcw className="size-4" aria-hidden /> Return / Replace</Link>}
+              {buyAgain && (
+                <button type="button" className={secondaryAction} disabled={addToCart.isPending} aria-busy={addToCart.isPending || undefined} onClick={() => void handleBuyAgain()}>
+                  {addToCart.isPending ? <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden /> : <ShoppingBag className="size-4" aria-hidden />}
+                  {addToCart.isPending ? "Adding…" : "Buy again"}
+                </button>
+              )}
+            </div>}
+          </div>
+        )}
       </div>
     </article>
   );
@@ -231,10 +249,13 @@ function OrderCard({
 export default function OrdersContent({ embedded = false }: OrdersContentProps) {
   const { customer } = useAuth();
   const [listPage, setListPage] = useState(1);
-  const { orders, counts, loading, error, refresh, totalPages, page, hasMore } =
+  const { orders, loading, refreshing, error, refresh, totalPages, page, hasMore } =
     useAccountOrdersSummary({ page: listPage, pageSize: 15 });
+  const pullStart = useRef<{ id: number; x: number; y: number } | null>(null);
+  const suppressRefreshClick = useRef(false);
+  const [releaseToRefresh, setReleaseToRefresh] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState("");
   const [activeStat, setActiveStat] = useState<StatusFilter>("all");
-  const [dropdownStatus, setDropdownStatus] = useState<DropdownStatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [lastSixMonthsOnly, setLastSixMonthsOnly] = useState(false);
 
@@ -243,7 +264,6 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
       .filter((order) => {
         const bucket = resolveOrderBucket(order);
         if (activeStat !== "all" && bucket !== activeStat) return false;
-        if (dropdownStatus !== "all" && bucket !== dropdownStatus) return false;
         if (lastSixMonthsOnly && !isWithinLastSixMonths(order.created_at)) return false;
         return orderMatchesSearch(order, searchQuery);
       })
@@ -251,10 +271,17 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
         (a, b) =>
           new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
       );
-  }, [orders, activeStat, dropdownStatus, lastSixMonthsOnly, searchQuery]);
+  }, [orders, activeStat, lastSixMonthsOnly, searchQuery]);
 
-  const isRefreshing = loading && orders.length > 0;
   const showSkeleton = loading && orders.length === 0;
+  const canRefresh = !loading && !refreshing;
+  const refreshOrders = () => {
+    if (!canRefresh) return;
+    setRefreshMessage("");
+    void refresh({ cancelRefetch: false }).then(result => {
+      if (result.isSuccess) setRefreshMessage("Orders updated");
+    });
+  };
 
   if (!customer) {
     return (
@@ -266,136 +293,125 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
     );
   }
 
-  const wrapperClass = embedded ? "space-y-6" : "mx-auto max-w-5xl space-y-6 px-4 py-10";
+  const wrapperClass = embedded ? "space-y-4 sm:space-y-5" : "mx-auto max-w-5xl space-y-4 px-4 py-6 sm:space-y-5 sm:py-10";
 
   return (
     <div className={wrapperClass}>
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#326b29]">Your purchases</p>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Your orders</h1>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500">Track deliveries, view details, and manage your purchases.</p>
-        </div>
-        <Link href="/account/help" className="mt-1 inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-600 transition hover:border-green-200 hover:text-green-800">
-          <Headphones className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">Need help?</span>
-          <span className="sr-only sm:hidden">Help with your orders</span>
+      <header className="rounded-2xl bg-[#123e34] px-4 pb-5 pt-2 text-white sm:px-6 sm:pb-6 sm:pt-4">
+        <Link href="/account" className="inline-flex min-h-11 items-center gap-2 rounded text-xs font-semibold text-[#d6e9df] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 lg:hidden">
+          <ArrowLeft className="size-4" aria-hidden /> My account
         </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Your orders</h1>
+            <p className="mt-1 text-sm text-[#d6e9df]">Track deliveries and manage past purchases.</p>
+          </div>
+          <Link href="/account/help" className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-white/40 px-3 text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2">
+            <Headphones className="size-4" aria-hidden /> Order help
+          </Link>
+        </div>
       </header>
 
-      <section aria-label="Order filters" className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="flex gap-1 overflow-x-auto border-b border-slate-100 px-2 scrollbar-hide sm:px-3">
-          {STATUS_TABS.map((card) => {
-            const count =
-              card.key === "all" ? counts.all : counts[card.key as AccountOrderBucket];
-            const isActive = activeStat === card.key;
-            return (
-              <button
-                key={card.key}
-                type="button"
-                aria-pressed={isActive}
-                onClick={() => {
-                  setActiveStat(card.key);
-                  if (card.key === "all") {
-                    setDropdownStatus("all");
-                  } else {
-                    setDropdownStatus(card.key);
-                  }
-                }}
-                className={cn(
-                  "relative flex shrink-0 items-center gap-2 border-b-2 px-3 py-4 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-green-600",
-                  isActive
-                    ? "border-[#326b29] text-[#326b29]"
-                    : "border-transparent text-slate-500 hover:border-slate-200 hover:text-slate-900"
-                )}
-              >
-                <span>{card.label}</span>
-                <span className={cn("inline-flex min-w-5 items-center justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums", isActive ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-500")}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="grid grid-cols-2 items-center gap-2.5 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:p-4">
-          <div className="relative col-span-2 min-w-0 sm:col-span-1">
+      <section aria-label="Order filters" className="rounded-xl border border-[#dce7df] bg-white">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2.5 p-3 sm:p-4">
+          <div className="relative col-span-1 min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
             <Input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search orders or products"
+              placeholder="Search orders"
+              type="search"
               aria-label="Search by order ID or product"
-              className="h-10 rounded-lg border-slate-200 bg-slate-50/50 pl-9 text-sm shadow-none placeholder:text-slate-400 focus-visible:ring-green-600/20"
+              className="h-11 rounded-lg border-slate-200 bg-slate-50/50 pl-9 text-sm shadow-none placeholder:text-slate-400 focus-visible:ring-green-600/20"
             />
           </div>
 
-          <Select
-            value={dropdownStatus}
-            onValueChange={(value) => {
-              const next = value as DropdownStatusFilter;
-              setDropdownStatus(next);
-              setActiveStat(next);
-            }}
-          >
-            <SelectTrigger aria-label="Filter by order status" className="h-10 w-full rounded-lg border-slate-200 text-xs font-medium text-slate-600 shadow-none sm:w-36">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="processing">Processing</SelectItem>
-              <SelectItem value="shipped">Shipped</SelectItem>
-              <SelectItem value="delivered">Delivered</SelectItem>
-              <SelectItem value="returns">Returns</SelectItem>
-              <SelectItem value="canceled">Canceled</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={lastSixMonthsOnly ? "6months" : "all-time"}
-            onValueChange={(value) => setLastSixMonthsOnly(value === "6months")}
-          >
-            <SelectTrigger aria-label="Filter by order date" className="h-10 w-full rounded-lg border-slate-200 text-xs font-medium text-slate-600 shadow-none sm:w-32">
-              <SelectValue placeholder="Timeframe" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all-time">All time</SelectItem>
-              <SelectItem value="6months">Last 6 months</SelectItem>
-            </SelectContent>
-          </Select>
-
+          <details className="group col-span-2 row-start-2 min-w-0">
+            <summary className="flex min-h-11 w-fit cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 [&::-webkit-details-marker]:hidden">
+              <SlidersHorizontal className="size-4 shrink-0" aria-hidden />
+              Filters{activeStat !== "all" || lastSixMonthsOnly ? " (" + (Number(activeStat !== "all") + Number(lastSixMonthsOnly)) + ")" : ""}
+              <ChevronDown className="size-4 shrink-0 group-open:rotate-180" aria-hidden />
+            </summary>
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <Select value={activeStat} onValueChange={(value: StatusFilter) => setActiveStat(value)}>
+                <SelectTrigger aria-label="Filter by order status" className="min-w-0 rounded-lg border-slate-200"><SelectValue /></SelectTrigger>
+                <SelectContent>{STATUS_TABS.map(status => <SelectItem key={status.key} value={status.key}>{status.label}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={lastSixMonthsOnly ? "6months" : "all-time"} onValueChange={value => setLastSixMonthsOnly(value === "6months")}>
+                <SelectTrigger aria-label="Filter by order date" className="min-w-0 rounded-lg border-slate-200"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all-time">All time</SelectItem>
+                  <SelectItem value="6months">Last 6 months</SelectItem>
+                </SelectContent>
+              </Select>
+              {(activeStat !== "all" || lastSixMonthsOnly) && (
+                <button type="button" className="min-h-11 px-2 text-sm font-medium text-[#145448] underline" onClick={() => { setActiveStat("all"); setLastSixMonthsOnly(false); }}>Clear filters</button>
+              )}
+            </div>
+          </details>
           <button
             type="button"
-            onClick={() => void refresh()}
-            disabled={loading}
+            onClick={event => {
+              if (event.detail === 0 || !suppressRefreshClick.current) refreshOrders();
+              suppressRefreshClick.current = false;
+            }}
+            onPointerDown={event => {
+              if (!event.isPrimary) return;
+              suppressRefreshClick.current = false;
+              if (event.pointerType !== "touch" || !window.matchMedia("(max-width: 639px)").matches) return;
+              pullStart.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+            }}
+            onPointerMove={event => {
+              const start = pullStart.current;
+              if (start?.id !== event.pointerId) return;
+              const distance = event.clientY - start.y;
+              setReleaseToRefresh(distance >= 48 && distance > Math.abs(event.clientX - start.x));
+            }}
+            onPointerUp={event => {
+              const start = pullStart.current;
+              if (start?.id !== event.pointerId) return;
+              pullStart.current = null;
+              setReleaseToRefresh(false);
+              const x = Math.abs(event.clientX - start.x);
+              const y = event.clientY - start.y;
+              suppressRefreshClick.current = Math.max(x, Math.abs(y)) > 10;
+              if (y >= 48 && y > x) refreshOrders();
+            }}
+            onPointerCancel={() => {
+              pullStart.current = null;
+              setReleaseToRefresh(false);
+            }}
+            disabled={!canRefresh}
+            aria-busy={refreshing || undefined}
             aria-label="Refresh orders"
             title="Refresh orders"
-            className="col-span-2 inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-green-800 disabled:opacity-50 sm:col-span-1"
+            className="col-start-2 row-start-1 inline-flex min-h-11 touch-pan-x touch-pinch-zoom select-none items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-600 transition hover:bg-slate-50 hover:text-green-800 disabled:opacity-50 sm:touch-auto"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} aria-hidden />
-            <span className="sm:sr-only">Refresh</span>
+            {releaseToRefresh ? <ArrowDown className="h-4 w-4" aria-hidden /> : <RefreshCw className={cn("h-4 w-4", refreshing && "motion-safe:animate-spin")} aria-hidden />}
+            <span className={releaseToRefresh ? "hidden min-[420px]:inline" : "sr-only sm:not-sr-only"}>{refreshing ? "Refreshing…" : releaseToRefresh ? "Release to refresh" : "Refresh"}</span>
           </button>
         </div>
       </section>
 
       <div className="flex items-center justify-between gap-3 px-0.5 text-xs text-slate-500" aria-live="polite">
         <p>
-          {showSkeleton ? "Loading your orders…" : <><span className="font-semibold text-slate-700">{filteredOrders.length}</span> {filteredOrders.length === 1 ? "order" : "orders"}{activeStat !== "all" || searchQuery.trim() || lastSixMonthsOnly ? " found" : " on this page"}</>}
+          {showSkeleton ? "Loading your orders…" : <><span className="font-semibold text-slate-700">{filteredOrders.length}</span> {filteredOrders.length === 1 ? "order" : "orders"} on this page</>}
         </p>
-        {isRefreshing ? (
-          <span className="inline-flex items-center gap-1.5"><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />Updating…</span>
-        ) : <span>Most recent first</span>}
+        {refreshing ? (
+          <span>Updating orders…</span>
+        ) : <span>{refreshMessage || "Most recent first"}</span>}
       </div>
 
       {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-          {error}
+        <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <p>We couldn’t load the latest orders.</p>
+          <button type="button" disabled={!canRefresh} onClick={refreshOrders} className="mt-1 min-h-11 underline disabled:opacity-50">Try again</button>
         </div>
       ) : null}
 
       {showSkeleton ? (
         <OrdersSkeleton />
-      ) : (
+      ) : error && orders.length === 0 ? null : (
         <div className="space-y-4">
           {filteredOrders.length === 0 ? (
             <div className="rounded-2xl border border-slate-200 bg-white px-6 py-14 text-center">
@@ -415,8 +431,8 @@ export default function OrdersContent({ embedded = false }: OrdersContentProps) 
               ) : null}
             </div>
           ) : (
-            filteredOrders.map((order, index) => (
-              <OrderCard key={order.id} order={order} index={index} />
+            filteredOrders.map(order => (
+              <OrderCard key={order.id} order={order} />
             ))
           )}
           {totalPages > 1 ? (

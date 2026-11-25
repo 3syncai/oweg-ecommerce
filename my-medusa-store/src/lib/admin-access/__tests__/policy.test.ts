@@ -93,6 +93,8 @@ test("order details can read their native context but cannot perform Returns act
 test("service API keys can serve checkout, but can never manage admin accounts or roles", () => {
   assert.equal(canServiceKeyAccess("POST", "/admin/draft-orders"), true)
   assert.equal(canServiceKeyAccess("POST", "/admin/payments/p1/capture"), true)
+  assert.equal(canServiceKeyAccess("POST", "/admin/vendor-earnings/schedule-delivery"), true)
+  assert.equal(requiredAdminPermission("/admin/vendor-earnings/schedule-delivery"), "accounting")
   for (const route of ["/admin/access/me", "/admin/access/users", "/admin/access/roles", "/admin/users", "/admin/invites", "/admin/api-keys", "/admin/unknown"]) assert.equal(canServiceKeyAccess("POST", route), false, route)
 })
 test("malformed/encoded paths cannot turn a restricted request into a broad grant", () => {

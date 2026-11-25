@@ -6,6 +6,7 @@ import { useAddToCart } from "@/hooks/useCartMutations";
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { CategoryLink } from "@/components/modules/CategoryNavigation";
 import { ShoppingCart, Heart, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DetailedProduct } from "@/lib/medusa";
@@ -32,13 +33,13 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
   const addCart = useAddToCart();
   const isAdding = addCart.isPending;
   const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null);
-  const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(product.variant_id);
+  const { data: sellerOffers, soldOut: sellersSoldOut, isLoading: sellerOffersLoading } = useSellerOffers(product.variant_id);
   const selectedSellerOffer = sellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? sellerOffers?.[0];
   const purchaseVariantId = selectedSellerOffer?.variant_id ?? product.variant_id;
   const displayPrice = selectedSellerOffer?.price ?? product.price;
   const sellerChoicePinned = Boolean(selectedSellerOffer);
   const selectedVariant = product.variants.find(variant => variant.id === purchaseVariantId);
-  const hasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : Boolean(selectedVariant && isVariantPurchasable(selectedVariant));
+  const hasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : Boolean(selectedVariant && (!sellersSoldOut || selectedVariant.manage_inventory === false) && isVariantPurchasable(selectedVariant));
   const showHealthCareAgeGate = productHasHealthCareCategory(product.categories);
 
   const handleAddToCart = async () => {
@@ -49,7 +50,7 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     }
 
     try {
-      await addCart.mutateAsync({ variant_id: purchaseVariantId, quantity: 1, seller_selected: sellerChoicePinned });
+      await addCart.mutateAsync({ variant_id: purchaseVariantId, quantity: 1, seller_selected: sellerChoicePinned, expected_flash_price: selectedSellerOffer?.flash_sale?.flash_sale_price });
       alert("Added to cart successfully!");
     } catch (error) {
       console.error("Failed to add to cart:", error);
@@ -69,12 +70,12 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
           {product.categories.length > 0 && (
             <>
               <span className="mx-2">/</span>
-              <Link
+              <CategoryLink
                 href={`/c/${product.categories[0].handle || product.categories[0].id}`}
                 className="hover:text-[#7AC943]"
               >
                 {product.categories[0].title}
-              </Link>
+              </CategoryLink>
             </>
           )}
           <span className="mx-2">/</span>
@@ -230,13 +231,13 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {product.categories.map((category) => (
-                    <Link
+                    <CategoryLink
                       key={category.id}
                       href={`/c/${category.handle || category.id}`}
                       className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm hover:bg-[#7AC943] hover:text-white transition-colors"
                     >
                       {category.title}
-                    </Link>
+                    </CategoryLink>
                   ))}
                 </div>
               </div>

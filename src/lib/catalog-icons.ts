@@ -417,15 +417,15 @@ export const catalogIcons: { handle: string; title: string; kind: CatalogIconKin
   }
 ]
 
-function key(value: string = "") {
+export function catalogIconKey(value: string = "") {
   try { value = decodeURIComponent(value) } catch { /* Keep literal malformed handles for fallback. */ }
   return value.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 }
 const lookups = { category: new Map<string, string>(), subcategory: new Map<string, string>() }
 for (const icon of catalogIcons) {
-  lookups[icon.kind].set(key(icon.handle), icon.src)
-  lookups[icon.kind].set(key(icon.title), icon.src)
+  lookups[icon.kind].set(catalogIconKey(icon.handle), icon.src)
+  lookups[icon.kind].set(catalogIconKey(icon.title), icon.src)
 }
 export function catalogIconSrc(kind: CatalogIconKind, handle?: string, title?: string) {
-  return lookups[kind].get(key(handle)) || lookups[kind].get(key(title))
+  return lookups[kind].get(catalogIconKey(handle)) || lookups[kind].get(catalogIconKey(title))
 }

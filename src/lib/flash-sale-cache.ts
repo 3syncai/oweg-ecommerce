@@ -30,5 +30,9 @@ export function createFlashSaleCache(now = Date.now) {
 
 export function flashSaleCacheSeconds(value: FlashSalePayload, now = Date.now()) {
   const expiry = Date.parse(value.flash_sale?.expires_at || "")
-  return Number.isFinite(expiry) ? Math.max(0, Math.min(15, Math.floor((expiry - now) / 1000))) : 15
+  const validUntil = Math.min(
+    Number.isFinite(expiry) ? expiry : Infinity,
+    typeof value.cache_until === 'number' ? value.cache_until : Infinity,
+  )
+  return Math.max(0, Math.min(15, Math.floor((validUntil - now) / 1000)))
 }

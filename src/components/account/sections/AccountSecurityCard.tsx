@@ -123,7 +123,9 @@ export default function AccountSecurityCard() {
       setEditingPassword(false);
       setCurrentPasswordFocused(false);
       toast.success("Password updated. Please sign in again.");
-      await logout();
+      await logout().catch(() => {
+        toast.error("Password updated. Sign out from your account menu and sign in again.");
+      });
     } catch (error) {
       let message =
         error instanceof Error ? error.message : "Unable to update password.";

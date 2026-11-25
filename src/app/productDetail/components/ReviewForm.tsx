@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react'
 import { Star, X, Camera, Upload, LogIn } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthProvider'
 import { buildLoginUrl } from '@/lib/auth-redirect'
@@ -14,11 +14,13 @@ type ReviewFormProps = {
   productName: string
   productImage?: string
   onSubmitSuccess?: () => void
+  returnToReview?: boolean
 }
 
-const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: ReviewFormProps) => {
-  const { customer } = useAuth()
+const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess, returnToReview }: ReviewFormProps) => {
+  const { customer, initializing } = useAuth()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [rating, setRating] = useState<number>(0)
   const [hoveredRating, setHoveredRating] = useState<number>(0)
   const [reviewText, setReviewText] = useState('')
@@ -28,6 +30,7 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
   const [uploading, setUploading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const submitInFlight = useRef(false)
 
   const handleStarClick = (value: number) => {
     setRating(value)
@@ -51,8 +54,6 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
       Array.from(files).forEach((file) => {
         formData.append('files', file)
       })
-      formData.append('productId', productId)
-      formData.append('productName', productName)
 
       const response = await fetch(`/api/medusa/products/${productId}/reviews/upload-media`, {
         method: 'POST',
@@ -122,6 +123,7 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (submitInFlight.current || uploading) return
 
     if (!reviewTitle.trim()) {
       toast.error('Please enter a review title')
@@ -133,6 +135,7 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
       return
     }
 
+    submitInFlight.current = true
     setSubmitting(true)
     try {
       const response = await fetch(`/api/medusa/products/${productId}/reviews`, {
@@ -154,7 +157,8 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
         throw new Error(error.message || 'Failed to submit review')
       }
 
-      toast.success('Review submitted successfully!')
+      const data = await response.json().catch(() => null)
+      toast.success(data?.review?.status === 'pending' ? 'Review submitted for moderation' : 'Review submitted')
       
       // Reset form
       setRating(0)
@@ -173,11 +177,16 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
         description: errorMessage,
       })
     } finally {
+      submitInFlight.current = false
       setSubmitting(false)
     }
   }
 
   const displayRating = hoveredRating || rating
+
+  if (initializing) {
+    return <p role="status" className="text-sm text-slate-600">Loading review form…</p>
+  }
 
   // Show login prompt if user is not logged in
   if (!customer) {
@@ -193,7 +202,7 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
               You need to be signed in to share your experience with this product.
             </p>
             <Link
-              href={buildLoginUrl(pathname)}
+              href={buildLoginUrl(returnToReview ? `${pathname}?${searchParams.toString()}#write-review` : pathname)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
             >
               <LogIn className="w-4 h-4" />
@@ -382,7 +391,7 @@ const ReviewForm = ({ productId, productName, productImage, onSubmitSuccess }: R
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={submitting || !reviewTitle.trim() || rating === 0}
+            disabled={submitting || uploading || !reviewTitle.trim() || rating === 0}
             className="px-6 py-3 bg-yellow-400 hover:bg-yellow-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-slate-900 font-semibold rounded-lg transition-colors"
           >
             {submitting ? 'Submitting...' : 'Submit'}

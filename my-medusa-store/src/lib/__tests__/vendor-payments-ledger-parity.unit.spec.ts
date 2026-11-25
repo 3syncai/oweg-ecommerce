@@ -390,6 +390,23 @@ describe("running balance + payout + claim", () => {
 })
 
 describe("cards stay consistent with settlement rows", () => {
+  it("keeps UNLOCKING sales in Pending only — not Settlement or Balance", () => {
+    const unlocking = applyRunningLedgerBalance(saleEarning({ status: "UNLOCKING" }))
+    expect(unlocking[0].balance_amount).toBe(0)
+    const credited = applyRunningLedgerBalance(saleEarning({ status: "CREDITED" }))
+    const net = credited[0].bank_settlement
+    const cards = summarizeVendorPaymentCards(unlocking, {
+      todayKey: TODAY,
+      available_balance: 0,
+      unlocking_balance: net,
+      total_withdrawn: 0,
+    })
+    expect(cards.unlocking_payment).toBeCloseTo(net, 2)
+    expect(cards.pending_payment).toBeCloseTo(net, 2)
+    expect(cards.balance).toBe(0)
+    expect(cards.settlement_balance).toBe(0)
+  })
+
   it("today sale + today return: total_sale = product sale + return (not Sheet4 C)", () => {
     const rows = applyRunningLedgerBalance(
       saleEarning({ status: "REVERSED", return_fee: 80 })

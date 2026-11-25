@@ -263,11 +263,11 @@ export async function ensureProductsIndex(): Promise<void> {
       "created_at",
     ],
     rankingRules: [
+      "sort",
       "words",
       "typo",
       "proximity",
       "attribute",
-      "sort",
       "exactness",
       "in_stock:desc",
       "popularity_score:desc",

@@ -52,25 +52,30 @@ function extractAddresses(data: AddressesResponse): CustomerAddress[] {
   return Array.isArray(list) ? list.filter((item) => Boolean(item?.id)) : [];
 }
 
-export function useAccountAddresses() {
-  const { customer } = useAuth();
-  const queryClient = useQueryClient();
-
-  const addressesQuery = useQuery<CustomerAddress[]>({
-    queryKey: ["account-addresses", customer?.id],
-    enabled: Boolean(customer?.id),
+export function useAccountAddressList(customerId?: string) {
+  return useQuery<CustomerAddress[]>({
+    queryKey: ["account-addresses", customerId],
+    enabled: Boolean(customerId),
     staleTime: 60 * 1000,
-    queryFn: async () => {
+    refetchOnWindowFocus: false,
+    retry: false,
+    queryFn: async ({ signal }) => {
       const res = await fetch(LIST_ENDPOINT, {
         cache: "no-store",
         credentials: "include",
+        signal: AbortSignal.any([signal, AbortSignal.timeout(8000)]),
       });
-      if (res.status === 401) return [];
       if (!res.ok) throw new Error("Unable to load addresses");
       const data = (await res.json()) as AddressesResponse;
       return extractAddresses(data);
     },
   });
+}
+
+export function useAccountAddresses() {
+  const { customer } = useAuth();
+  const queryClient = useQueryClient();
+  const addressesQuery = useAccountAddressList(customer?.id);
 
   const invalidateAddresses = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["account-addresses", customer?.id] });

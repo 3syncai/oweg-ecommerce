@@ -96,6 +96,7 @@ export type DetailedProduct = {
   }>;
   variants: Array<{
     id: string;
+    seller_variant_ids?: string[];
     title?: string;
     inventory_quantity?: number;
     manage_inventory?: boolean;
@@ -322,6 +323,13 @@ function api(path: string, init?: RequestInit & { revalidate?: number }) {
       ...(requestInit.headers || {}),
     },
   });
+}
+
+export async function fetchMobileShopMenu(): Promise<unknown> {
+  const response = await api("/store/mobile-shop-menu", { revalidate: 60 });
+  if (!response.ok) throw new Error("Shopping menu unavailable");
+  const { items } = await response.json();
+  return items;
 }
 
 export async function fetchCategories(options?: {

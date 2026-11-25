@@ -28,7 +28,7 @@ type FlashSaleProduct = {
     mrp?: number
     price?: number
   }
-  display_pricing?: { variant_id: string; price: number; mrp: number; from: boolean }
+  seller?: string
   variant_id?: string
   flash_sale_price?: number // Flash sale price in rupees
   original_price?: number // Original price in rupees
@@ -61,6 +61,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
   const [loading, setLoading] = useState(!initialData)
   const [timeRemaining, setTimeRemaining] = useState(() => flashSaleCountdown(initialData?.flash_sale?.time_remaining_ms ?? 0))
   const [failed, setFailed] = useState(false)
+  const [expiredAt, setExpiredAt] = useState<string | null>(null)
   const fetching = useRef(false)
   const refreshedExpiry = useRef<string | null>(null)
 
@@ -71,7 +72,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
       const query = new URLSearchParams()
       if (inStockOnly) query.set('in_stock', '1')
       if (view === 'all') query.set('all', '1')
-      const response = await axios.get(`/api/medusa/flash-sale/products${query.size ? `?${query}` : ''}`)
+      const response = await axios.get(`/api/medusa/flash-sale/products${query.size ? `?${query}` : ''}`, { timeout: 20000 })
       setFailed(response.status !== 200 || response.data?.unavailable === true)
       setFlashSaleData(response.status === 200 ? response.data : { active: false, flash_sale: null, products: [] })
     } catch {
@@ -106,6 +107,7 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
       if (remaining > 0) {
         updateCountdown(remaining)
       } else {
+        setExpiredAt(expiresAt)
         setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0 })
         // One request per expiry; regular minute polling handles retries.
         if (refreshedExpiry.current !== expiresAt && document.visibilityState !== 'hidden') {
@@ -130,7 +132,8 @@ const FlashSaleSection: React.FC<{ showImageFallback?: boolean; inStockOnly?: bo
     return view === 'all' ? <div className="oweg-container" role="status"><p>Loading flash sale deals…</p><div className={styles.grid} aria-hidden="true">{Array.from({length: 8}, (_, i) => <div key={i} className={styles.skeleton} />)}</div></div> : <FlashSaleSkeleton />
   }
 
-  if (!flashSaleData?.active || !flashSaleData?.flash_sale || !flashSaleData?.products || flashSaleData.products.length === 0) {
+  const saleExpired = expiredAt !== null && flashSaleData?.flash_sale?.expires_at === expiredAt
+  if (!flashSaleData?.active || !flashSaleData.flash_sale || saleExpired || !flashSaleData.products?.length) {
     return view === 'all' ? <div className="oweg-container space-y-4 py-10">
       <h1 className="oweg-title">Flash sale deals</h1>
       <p role={failed ? 'alert' : 'status'}>{failed ? 'Deals couldn’t load. Please try again.' : 'There are no active in-stock deals right now. Check back soon.'}</p>
@@ -184,7 +187,7 @@ export function FlashSaleShowcase({ data, timeRemaining, showImageFallback = fal
           </div>
           <div ref={scrollRef} className={view === 'all' ? styles.grid : styles.track} role="region" aria-label={view === 'all' ? 'All flash sale products' : 'Flash Sale product carousel'} tabIndex={view === 'all' ? undefined : 0}>
             {data.products.map(product => (
-              <FlashSaleProductCard key={product.id} product={product} showImageFallback={showImageFallback} />
+              <FlashSaleProductCard key={product.variant_id ?? product.id} product={product} showImageFallback={showImageFallback} />
             ))}
           </div>
         </div>
@@ -200,7 +203,7 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
   const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
 
   // Get variant_id from product
-  const variantId = product.display_pricing?.variant_id || product.variant_id || product.variants?.[0]?.id || null
+  const variantId = product.variant_id || null
 
   // Defensive coercion: Postgres NUMERIC columns serialize as strings
   // ("900.00"), so `flash_sale_price` / `original_price` may arrive as
@@ -224,11 +227,11 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return '/placeholder-product.png'
   }
 
-  const price = toNumber(product.display_pricing?.price ?? product.flash_sale_price ?? product.metadata?.price)
-  const mrp = toNumber(product.display_pricing?.mrp ?? product.original_price ?? product.metadata?.mrp)
+  const price = toNumber(product.flash_sale_price ?? product.metadata?.price)
+  const mrp = toNumber(product.original_price)
   const discount = mrp > price && price > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0
   const imageUrl = getProductImage()
-  const productHref = `/productDetail/${encodeURIComponent(product.id)}`
+  const productHref = `/productDetail/${encodeURIComponent(product.id)}?offer=${encodeURIComponent(variantId || "")}&deal=${price}`
 
   const isWishlisted = (() => {
     const list = (customer?.metadata as Record<string, unknown> | undefined)?.wishlist
@@ -251,18 +254,19 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
           ) : <Image src={imageUrl} alt={product.title} fill className={styles.image} sizes="(max-width: 639px) 160px, 190px" onError={showImageFallback ? () => setFailedImage(imageUrl) : undefined} />}
         </Link>
         <span className={styles.deal}>Deal</span>
-        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} className={styles.wishlist} aria-label={`Add ${product.title} to wishlist`} aria-pressed={isWishlisted}>
+        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} className={`${styles.wishlist} oweg-wishlist-motion`} aria-label={`Add ${product.title} to wishlist`} aria-pressed={isWishlisted}>
           <Heart size={18} fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden />
         </button>
       </div>
       <div className={styles.body}>
         <Link href={productHref} prefetch={false} className={styles.title}>{product.title}</Link>
+        {product.seller && <small className="break-words">{product.seller}</small>}
         <div className={styles.pricing}>
-          <span className={styles.price}>{product.display_pricing?.from && <span className={styles.from}>From </span>}{inr.format(price)}</span>
-          {mrp > price && <del>{inr.format(mrp)}</del>}
-          {discount > 0 && <span className={styles.discount}>{discount}% OFF</span>}
+          <span className={styles.price}>{inr.format(price)}</span>
+          {mrp > price && <del aria-label={`Regular price ${inr.format(mrp)}`}>Was {inr.format(mrp)}</del>}
+          {discount > 0 && <span className={styles.discount}>{discount}% OFF · Save {inr.format(mrp - price)}</span>}
         </div>
-        <ProductCardQuickActions variantId={variantId ?? undefined} selectionHref={product.variants?.length === 1 ? undefined : productHref} productName={product.title} isHovered={false} layout="inline" />
+        <ProductCardQuickActions variantId={variantId ?? undefined} expectedFlashPrice={price} productName={product.title} isHovered={false} layout="inline" />
       </div>
     </article>
   )

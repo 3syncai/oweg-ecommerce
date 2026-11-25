@@ -2,12 +2,13 @@
 import { captureCartFlight } from "@/lib/cart-flight"
 import { useToggleWishlist } from "@/hooks/useWishlistMutations"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import BrandLoader from "@/components/ui/BrandLoader";
 import Link from 'next/link'
 import Image from 'next/image'
-import { ChevronRight, Heart, Plus, X } from 'lucide-react'
+import { ChevronRight, X } from 'lucide-react'
+import { ProductCard } from '@/components/modules/ProductCard'
 import { useRouter, usePathname } from 'next/navigation'
 import { useSearchParams } from 'next/navigation'
 import { buildLoginUrl } from '@/lib/auth-redirect'
@@ -48,8 +49,8 @@ import {
   notifyWishlistSuccess,
 } from '@/lib/notifications'
 import { useAuth } from '@/contexts/AuthProvider'
+import { useDeliveryLocation } from '@/contexts/DeliveryLocationProvider'
 import { useAddToCart } from '@/hooks/useCartMutations'
-import { useFlashSale } from '@/hooks/useFlashSale'
 import HealthCareAgeGate from '@/components/modules/HealthCareAgeGate'
 import SellerOffers from '@/components/modules/SellerOffers'
 import { useSellerOffers } from '@/hooks/useSellerOffers'
@@ -108,6 +109,18 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const openReview = searchParams?.get('tab') === 'reviews'
+  const lastProductPage = useRef<string | null>(null)
+
+  useLayoutEffect(() => {
+    const page = `${pathname}:${productId}`
+    if (lastProductPage.current === page) return
+    lastProductPage.current = page
+    if (!openReview && !window.location.hash) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    }
+  }, [pathname, productId, openReview])
+
   const [quantity, setQuantity] = useState(1)
   const addCart = useAddToCart()
   const cartActionPending = addCart.isPending
@@ -117,7 +130,9 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   const [selectedSellerVariantId, setSelectedSellerVariantId] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState(0)
   const [activeTab, setActiveTab] = useState<DescriptionTab>('description')
-  const [pinCode, setPinCode] = useState('')
+  const { pincode: deliveryPincode } = useDeliveryLocation()
+  const [pinOverride, setPinOverride] = useState<string | null>(null)
+  const pinCode = pinOverride ?? deliveryPincode
   const pinLookup = useRef<AbortController | null>(null)
   useEffect(() => () => pinLookup.current?.abort(), [])
   const [pinStatus, setPinStatus] = useState<PinStatus>('idle')
@@ -173,33 +188,39 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   })
   const product = productResponse?.product ?? null
   const currentProductId = product?.id
-  const { flashSaleInfo } = useFlashSale(currentProductId)
+  const linkedOffer = searchParams?.get("offer") ?? null
 
   useEffect(() => {
-    setSelectedOptions(product ? initialProductOptions(product) : {})
-    setExplicitVariantId(null)
-    setSelectedSellerVariantId(null)
+    const linked = product?.variants.find(variant => variant.id === linkedOffer || (linkedOffer && variant.seller_variant_ids?.includes(linkedOffer)))
+    setSelectedOptions(linked?.options ?? (product ? initialProductOptions(product) : {}))
+    setExplicitVariantId(linked?.id ?? null)
+    setSelectedSellerVariantId(linkedOffer)
     setQuantity(1)
-  }, [product?.id])
+  }, [product?.id, linkedOffer])
 
   const selectedVariant = useMemo(() => {
     return product ? selectedProductVariant(product, selectedOptions, explicitVariantId) : null
   }, [product, selectedOptions, explicitVariantId])
   const selectionRequired = Boolean(product?.variants.length && !selectedVariant)
 
-  const { data: sellerOffers, isLoading: sellerOffersLoading } = useSellerOffers(selectedVariant?.id)
-  const visibleSellerOffers = useMemo(() => sellerOffers?.map(offer => ({
-    ...offer,
-    price: offer.variant_id === selectedVariant?.id && flashSaleInfo?.active && typeof flashSaleInfo.flash_sale_price === 'number'
-      ? Math.min(offer.price, flashSaleInfo.flash_sale_price)
-      : offer.price,
-  })).sort((a, b) => a.price - b.price || b.available - a.available || a.variant_id.localeCompare(b.variant_id)), [sellerOffers, selectedVariant?.id, flashSaleInfo?.active, flashSaleInfo?.flash_sale_price])
-  const selectedSellerOffer = visibleSellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId) ?? visibleSellerOffers?.[0]
+  const { data: visibleSellerOffers, soldOut: sellersSoldOut, isLoading: sellerOffersLoading } = useSellerOffers(selectedVariant?.id, quantity, pinCode ?? undefined)
+  const selectedSellerOffer = visibleSellerOffers?.find(offer => offer.variant_id === selectedSellerVariantId && !offer.delivery_unavailable) ?? visibleSellerOffers?.[0]
   // The first offer is shown as "Selected" even before the buyer clicks it.
   // Carry that visible choice through cart and checkout as well.
   const sellerChoicePinned = Boolean(selectedSellerOffer)
   const purchaseVariantId = selectedVariant ? (selectedSellerOffer?.variant_id ?? selectedVariant.id) : undefined
-  const sellerHasStock = selectedSellerOffer ? selectedSellerOffer.available > 0 : undefined
+  const policyQuery = useQuery({
+    queryKey: ["product-return-policy", purchaseVariantId],
+    enabled: Boolean(purchaseVariantId),
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async ({signal}): Promise<{return_window_days:number; replacement_window_days:number} | null> => {
+      const response = await fetch(`/api/product-policy?variant=${encodeURIComponent(purchaseVariantId!)}`, {signal})
+      if (!response.ok) throw new Error("Return policy unavailable")
+      return (await response.json()).policy
+    },
+  })
+  const sellerHasStock = selectedSellerOffer ? !selectedSellerOffer.delivery_unavailable && selectedSellerOffer.available > 0 : sellersSoldOut && selectedVariant?.manage_inventory !== false ? false : undefined
   const sellerInventory = selectedSellerOffer?.available
 
   const displayProduct = useMemo(() => {
@@ -237,7 +258,13 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
   // Pull the live flash-sale info for this product so the price block in
   // ProductSummary shows the flash price + countdown when one is active.
   // Without this the PDP silently shows the regular catalogue price.
-  const selectedFlashSaleInfo = purchaseVariantId === selectedVariant?.id ? flashSaleInfo : undefined
+  const selectedFlashSaleInfo = selectedSellerOffer?.flash_sale
+  const [acceptedQuote, setAcceptedQuote] = useState("")
+  const advertisedPrice = Number(searchParams?.get("deal"))
+  const currentQuote = JSON.stringify([purchaseVariantId, displayProduct?.price, pinCode, quantity])
+  const changedDeal = Boolean(linkedOffer && advertisedPrice > 0 && (!selectedSellerVariantId || selectedSellerVariantId === linkedOffer)
+    && (purchaseVariantId !== linkedOffer || selectedFlashSaleInfo?.flash_sale_price !== advertisedPrice))
+  const needsPriceReview = changedDeal && acceptedQuote !== currentQuote
   const checkoutSellerChoicePinned = sellerChoicePinned
   const categoryIds = useMemo(
     () => Array.from(new Set((product?.categories || []).map((cat) => cat.id).filter((id): id is string => !!id))),
@@ -720,13 +747,19 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
 
   useEffect(() => {
-    setActiveTab('description')
+    setActiveTab(openReview ? 'reviews' : 'description')
     setPinStatus('idle')
     setPinMessage('')
     pinLookup.current?.abort()
-    setPinCode('')
+    setPinOverride(null)
     setCompareSelection([])
-  }, [productId])
+  }, [productId, openReview])
+
+  useEffect(() => {
+    pinLookup.current?.abort()
+    setPinStatus('idle')
+    setPinMessage('')
+  }, [pinCode])
 
   const metadata = product?.metadata as MetaRecord
 
@@ -1060,7 +1093,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
     const itemLabel = label ?? product?.title ?? "Item";
     try {
-      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected, animationSource: captureCartFlight(document.querySelector("[data-cart-product-gallery]")) });
+      await addCart.mutateAsync({ variant_id: variantId, quantity: qty, seller_selected: sellerSelected, delivery_pincode: pinCode, expected_flash_price: variantId === selectedFlashSaleInfo?.variant_id ? selectedFlashSaleInfo?.flash_sale_price : undefined, animationSource: captureCartFlight(document.querySelector("[data-cart-product-gallery]")) });
       notifyCartAddSuccess(itemLabel, qty, goToCart);
     } catch (err) {
       console.warn("addVariantToCart failed", err);
@@ -1070,7 +1103,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const handleAddToCart = async () => {
     if (!selectedVariant || selectionRequired) { toast.error('Please choose your product options first.'); return }
-    if (cartActionPending || buyNowPending || sellerOffersLoading) return
+    if (cartActionPending || buyNowPending || sellerOffersLoading || needsPriceReview) return
     if (!(sellerHasStock ?? hasStock)) {
       notifyOutOfStock()
       return
@@ -1084,7 +1117,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const handleBuyNow = () => {
     if (!selectedVariant || selectionRequired) { toast.error('Please choose your product options first.'); return }
-    if (cartActionPending || buyNowPending || sellerOffersLoading) return
+    if (cartActionPending || buyNowPending || sellerOffersLoading || needsPriceReview) return
     if (!product) {
       notifyCartUnavailable()
       return
@@ -1215,7 +1248,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
   const handlePinInputChange = (value: string) => {
     pinLookup.current?.abort()
-    setPinCode(value)
+    setPinOverride(value)
     setPinStatus('idle')
     setPinMessage('')
   }
@@ -1296,6 +1329,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                 <ProductSummary
                   deliveryInfo={
                 <DeliveryInfo
+                  policy={policyQuery.data}
                   pinCode={pinCode}
                   pinStatus={pinStatus}
                   pinMessage={pinMessage}
@@ -1319,17 +1353,28 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   onQuantityChange={handleQuantityChange}
                   onAddToCart={handleAddToCart}
                   onBuyNow={handleBuyNow}
-                  cartBusy={cartActionPending || sellerOffersLoading}
-                  buyNowBusy={buyNowPending || sellerOffersLoading}
+                  cartBusy={cartActionPending || sellerOffersLoading || needsPriceReview}
+                  buyNowBusy={buyNowPending || sellerOffersLoading || needsPriceReview}
                   onShare={shareProduct}
                   onSaveForLater={handleSaveForLater}
                   isWishlisted={isWishlisted}
                   onOpenCompare={() => setCompareModalOpen(true)}
                   formatPrice={(value) => inr.format(value)}
                   flashSaleInfo={selectedFlashSaleInfo}
-                  sellerOffers={visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId ? (
-                    <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId} onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
-                  ) : null}
+                  sellerOffers={<>
+                    {needsPriceReview && !sellerOffersLoading && (
+                      <div role="status" className="my-2 rounded border p-3 text-sm">
+                        {selectedSellerOffer ? <>
+                          This deal has changed. Review the seller and current price.{" "}
+                          <button type="button" className="underline" onClick={() => setAcceptedQuote(currentQuote)}>Accept current offer</button>
+                        </> : "The advertised seller offer is unavailable."}
+                      </div>
+                    )}
+                    {visibleSellerOffers && visibleSellerOffers.length > 0 && purchaseVariantId && (
+                      <SellerOffers offers={visibleSellerOffers} selectedVariantId={purchaseVariantId}
+                        onSelect={id => { setSelectedSellerVariantId(id); setQuantity(1) }} formatPrice={value => inr.format(value)} />
+                    )}
+                  </>}
                 />
 
               </div>
@@ -1337,6 +1382,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
 
             <section className={styles.detailsSection}>
               <DescriptionTabs
+                focusReview={openReview}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 product={product}
@@ -1426,62 +1472,14 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    {related.map((item) => {
-                      const slug = encodeURIComponent(String(item.handle || item.id))
-                      const href = `/productDetail/${slug}?id=${encodeURIComponent(String(item.id))}`
-                      return (
-                        <Link
-                          key={item.id}
-                          href={href}
-                          className="group relative flex flex-col gap-3 p-2 text-left"
-                        >
-                          {item.discount > 0 && (
-                            <span className="absolute top-2 left-2 z-10 text-[11px] font-semibold text-white bg-red-600 px-2 py-1 rounded-full shadow">
-                              {item.discount}% off
-                            </span>
-                          )}
-                          <div className="relative aspect-square overflow-hidden rounded-2xl bg-white shadow-sm">
-                            <Image
-                              src={item.image || FALLBACK_IMAGE}
-                              alt={item.name}
-                              fill
-                              className="object-contain p-4 transition-transform duration-500 group-hover:scale-105"
-                            />
-                            <div className="absolute inset-y-3 right-3 flex flex-col gap-2 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  notifyCartAddError('Please open the product detail page to add this item to your cart.')
-                                }}
-                                className="w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center shadow hover:bg-green-600"
-                                aria-label="Add to cart"
-                              >
-                                <Plus className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  void addProductToWishlist(item.id?.toString(), item.name)
-                                }}
-                                className="w-9 h-9 rounded-full bg-white text-slate-600 flex items-center justify-center shadow border border-slate-200 hover:text-red-500"
-                                aria-label="Add to wishlist"
-                              >
-                                <Heart className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                          <p className="text-sm font-medium text-slate-800 line-clamp-2">{item.name}</p>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-lg font-semibold text-slate-900">{inr.format(item.price)}</span>
-                            <span className="text-xs text-slate-400 line-through">{inr.format(item.mrp)}</span>
-                          </div>
-                        </Link>
-                      )
-                    })}
+                    {related.map((item) => (
+                      <ProductCard
+                        key={item.id}
+                        {...item}
+                        image={item.image || FALLBACK_IMAGE}
+                        prefetch={false}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -1492,23 +1490,21 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
       {compareModalOpen && (
         <div className={styles.compareOverlay}>
           <div role="dialog" aria-modal="true" aria-labelledby="compare-dialog-title" className={`${styles.compareDialog} relative w-full max-w-2xl bg-white shadow-2xl border border-slate-100 rounded-3xl flex flex-col overflow-hidden`}>
-            <div className="flex shrink-0 items-start justify-between gap-4 px-4 py-4 border-b bg-white">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[#dce6d8] bg-[#f4f8f1] px-4 py-4 sm:px-6">
               <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-slate-400 mb-1">Compare</p>
-                <h3 id="compare-dialog-title" className="text-xl font-semibold text-slate-900">Compare similar products</h3>
+                <h3 id="compare-dialog-title" className="text-lg font-semibold text-[#23352b] sm:text-xl">Compare products</h3>
                 <p className="text-sm text-slate-500">
-                  Select items from the same category to see a quick spec comparison.
+                  Choose products to compare with this item.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setCompareModalOpen(false)}
-                className="flex items-center justify-center gap-2 rounded-full border border-slate-200 px-3 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                className="grid size-11 shrink-0 place-items-center rounded-full border border-[#dce6d8] bg-white text-[#145448] hover:bg-green-50"
                 aria-label="Close compare modal"
                 autoFocus
               >
                 <X className="w-4 h-4" />
-                <span className="hidden md:inline">Close</span>
               </button>
             </div>
 
@@ -1545,7 +1541,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f8faf7] px-4 py-3 sm:px-6">
               {filteredCompareOptions.length === 0 ? (
                 <p className="text-sm text-slate-500">
                   {loadingRelated ? 'Loading similar products...' : 'No products match the selected filters.'}
@@ -1558,16 +1554,11 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                       <button
                         key={item.id}
                         type="button"
+                        aria-pressed={selected}
                         onClick={() => toggleCompareSelection(item)}
                         className={`flex items-start gap-3 rounded-2xl border px-3 py-2 text-left transition ${selected ? 'border-green-400 bg-green-50' : 'border-slate-200 bg-white hover:border-slate-300'
                           }`}
                       >
-                        <input
-                          type="checkbox"
-                          checked={selected}
-                          readOnly
-                          className="h-4 w-4 rounded border-slate-300 text-green-600 focus:ring-green-500 mt-1"
-                        />
                         <div className="relative h-12 w-12 flex-shrink-0 rounded-lg bg-slate-50 overflow-hidden">
                           <Image
                             src={item.image || FALLBACK_IMAGE}
@@ -1576,7 +1567,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                             className="object-contain p-1.5"
                           />
                         </div>
-                        <div className="flex-1">
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-slate-900 line-clamp-2">{item.name}</p>
                           <p className="text-xs text-slate-500">
                             {item.brand || 'Other'} · {item.color || 'All'}
@@ -1590,6 +1581,7 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
                             {item.summary?.warranty && <p>Warranty: {item.summary.warranty}</p>}
                           </div>
                         </div>
+                        <span aria-hidden="true" className={`grid size-6 shrink-0 place-items-center rounded-full border text-sm ${selected ? 'border-[#145448] bg-[#145448] text-white' : 'border-slate-300 text-[#145448]'}`}>{selected ? '✓' : '+'}</span>
                       </button>
                     )
                   })}
@@ -1597,30 +1589,29 @@ export default function ProductDetailPage({ productId, initialProduct }: Product
               )}
             </div>
 
-            <div className="shrink-0 px-4 py-4 border-t bg-white flex flex-wrap items-center justify-between gap-3">
+            <div className={`${styles.compareFooter} grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-[#dce6d8] bg-white px-4 pt-3 sm:px-6`}>
+              <div>
+              <p aria-live="polite" className="text-xs font-medium text-slate-600">{compareSelection.length} selected</p>
               <button
                 type="button"
                 onClick={() => setCompareSelection([])}
-                className="text-sm text-slate-500 hover:text-slate-800"
+                disabled={!compareSelection.length}
+                className="min-h-8 text-xs font-medium text-[#145448] hover:underline disabled:opacity-50"
               >
                 Clear selection
               </button>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-500">
-                  {compareSelection.length} product{compareSelection.length === 1 ? '' : 's'} selected
-                </span>
+              </div>
                 <button
                   type="button"
                   disabled={!compareSelection.length}
                   onClick={handleCompareNow}
-                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${compareSelection.length
-                      ? 'bg-green-600 text-white hover:bg-green-700'
+                  className={`min-h-11 rounded-xl px-4 py-2 text-sm font-semibold transition ${compareSelection.length
+                      ? 'bg-[#145448] text-white hover:bg-[#103e36]'
                       : 'bg-slate-200 text-slate-500 cursor-not-allowed'
                     }`}
                 >
                   Compare now
                 </button>
-              </div>
             </div>
           </div>
         </div>

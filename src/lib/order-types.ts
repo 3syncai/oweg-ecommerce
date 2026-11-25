@@ -6,6 +6,8 @@ export type OrderItem = {
   unit_price?: number;
   total?: number;
   variant_id?: string;
+  product_id?: string | null;
+  product_handle?: string | null;
 };
 
 export type OrderAddress = {

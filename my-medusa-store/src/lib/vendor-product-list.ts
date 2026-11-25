@@ -34,8 +34,14 @@ export async function vendorProductSelection(
       COALESCE((SELECT json_agg(id ORDER BY modified_at DESC NULLS LAST, id DESC)
         FROM page), '[]'::json) AS ids
     FROM catalog
-  `, [vendorId, search, status, pagination.all ? null : pagination.limit,
-    pagination.all ? 0 : pagination.offset])
+  `, [
+    vendorId,
+    search,
+    status,
+    // Never hydrate the entire catalog in one request — cap "all" for dashboard/search.
+    pagination.all ? 200 : pagination.limit,
+    pagination.all ? 0 : pagination.offset,
+  ])
   const row = rows[0]
   return {
     ids: row.ids as string[],

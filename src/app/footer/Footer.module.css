@@ -12,9 +12,6 @@
 .links { list-style:none; margin:0; padding:0 0 14px; }
 .links a { display:flex; align-items:center; min-height:44px; padding:10px 4px; color:#516347; font-size:12px; line-height:1.6; overflow-wrap:anywhere; }
 .links a:hover,.legal a:hover { text-decoration:underline; }
-.support { padding:4px 4px 20px; color:#75836b; font-size:11px; line-height:1.8; }
-.support p { margin:0 0 7px; }
-.support strong { color:#56674c; font-weight:500; }
 .legal { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; column-gap:22px; margin-top:16px; }
 .legal a { display:inline-flex; align-items:center; min-height:44px; font-size:11px; color:#617654; }
 .copyright { margin:8px 0 0; text-align:center; color:#88937f; font-size:10px; line-height:1.8; }

@@ -13,7 +13,9 @@ import { Providers } from "./providers";
 import CartSuccessMotion from "@/components/ui/CartSuccessMotion";
 import CartProvider from "@/contexts/CartProvider";
 import AuthProvider from "@/contexts/AuthProvider";
+import DeliveryLocationProvider from "@/contexts/DeliveryLocationProvider";
 import AppToaster from "@/components/ui/app-toaster";
+import OfflineNotice from "@/components/ui/OfflineNotice";
 import AffiliateRefCapture from "@/components/AffiliateRefCapture";
 import SmoothScroll from "@/components/SmoothScroll";
 import { DebugControllerProvider } from "@/components/debug-controller/DebugControllerProvider";
@@ -22,6 +24,8 @@ import ConditionalWhatsAppWidget from "@/components/debug-controller/Conditional
 import ForceUpdateGate from "@/components/mobile/ForceUpdateGate";
 import NativeBootSplash from "@/components/mobile/NativeBootSplash";
 import NativePushPrompt from "@/components/mobile/NativePushPrompt";
+import NativeStatusBar from "@/components/mobile/NativeStatusBar";
+import { CategoryNavigationProvider } from "@/components/modules/CategoryNavigation";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 
 /** Self-hosted so CI/build does not depend on fonts.gstatic.com */
@@ -81,8 +85,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#7AC943",
+  themeColor: "#ffffff",
   colorScheme: "light",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -103,6 +108,7 @@ export default function RootLayout({
         <Providers>
           <DebugControllerProvider>
             <AuthProvider>
+              <DeliveryLocationProvider>
               <CartProvider>
                 <CartSuccessMotion />
                 <SmoothScroll />
@@ -111,31 +117,41 @@ export default function RootLayout({
                   <AffiliateRefCapture />
                 </Suspense>
 
+                <CategoryNavigationProvider>
                 <div className="min-h-screen flex flex-col">
                   <Header />
 
                   <main
                     data-storefront-content
-                    className="flex-1 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-0"
-                    style={{ paddingTop: "var(--app-header-height, 136px)" }}
+                    className="min-h-svh flex-1 bg-[#fafbf7] md:min-h-0"
+                    style={{
+                      // Include safe-area in the fallback so Capacitor/iOS does not
+                      // tuck the hero under the fixed header before JS measures it.
+                      paddingTop:
+                        "var(--app-header-height, calc(136px + max(env(safe-area-inset-top, 0px), var(--oweg-sat, 0px))))",
+                    }}
                   >
                     {/* Kept inside the header offset so the announcement banner is
                         visible instead of sitting behind the fixed header. */}
+                    <OfflineNotice />
                     <SiteProtections />
                     {children}
                   </main>
 
-                  <Footer />
+                  <Footer year={new Date().getUTCFullYear()} />
                   <MobileBottomNavShell />
                   <ConditionalWhatsAppWidget />
                   <PWAInstallPrompt />
+                  <NativeStatusBar />
                   <NativeBootSplash />
                   <NativePushPrompt />
                   <ForceUpdateGate />
                 </div>
+                </CategoryNavigationProvider>
 
                 <AppToaster />
               </CartProvider>
+              </DeliveryLocationProvider>
             </AuthProvider>
           </DebugControllerProvider>
         </Providers>

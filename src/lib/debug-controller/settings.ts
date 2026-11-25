@@ -2,13 +2,21 @@ import {
   DEFAULT_DEBUG_SETTINGS,
   type DebugControllerSettings,
 } from "./types";
-import { ensureDebugControllerTable, getDebugControllerPool } from "./db";
+import {
+  ensureDebugControllerTable,
+  getDebugControllerDatabaseUrl,
+  getDebugControllerPool,
+  isDebugControllerEnabled,
+} from "./db";
 
 const SETTINGS_KEY = "global";
 
 let cachedSettings: DebugControllerSettings | null = null;
 let cacheExpiresAt = 0;
 const CACHE_TTL_MS = 60_000;
+const FAILURE_BACKOFF_MS = 3000;
+let retryAt = 0;
+let pendingRead: Promise<DebugControllerSettings> | null = null;
 
 function mergeSettings(
   partial: Partial<DebugControllerSettings> | null | undefined
@@ -19,37 +27,69 @@ function mergeSettings(
   };
 }
 
+async function readSettings(): Promise<DebugControllerSettings> {
+  const db = getDebugControllerPool();
+  // query_timeout is supported by node-postgres at runtime; @types/pg omits it.
+  const query = {
+    text: "SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1",
+    values: [SETTINGS_KEY],
+    query_timeout: 3000,
+  } as { text: string; values: string[] };
+  const read = async () => {
+    const result = await db.query<{ value: Partial<DebugControllerSettings> }>(query);
+    return mergeSettings(result.rows[0]?.value);
+  };
+  try {
+    return await read();
+  } catch (error) {
+    // Existing deployments only need SELECT. Bootstrap on a new database.
+    if ((error as { code?: unknown } | null)?.code !== "42P01") throw error;
+    await ensureDebugControllerTable();
+    return read();
+  }
+}
+
+/**
+ * Site / checkout settings.
+ * - Debug controller off → safe defaults, no DB (checkout stays open).
+ * - Debug controller on → read DB with short cache; failures throw so guards
+ *   can return a temporary 503 instead of silently opening checkout.
+ */
 export async function getDebugControllerSettings(
   options?: { bypassCache?: boolean }
 ): Promise<DebugControllerSettings> {
+  if (!isDebugControllerEnabled()) return mergeSettings(null);
+  if (!getDebugControllerDatabaseUrl() && process.env.NODE_ENV !== "production") {
+    return mergeSettings(null);
+  }
+  if (options?.bypassCache) return readSettings();
+
   const now = Date.now();
-  if (
-    !options?.bypassCache &&
-    cachedSettings &&
-    now < cacheExpiresAt
-  ) {
-    return cachedSettings;
-  }
+  if (cachedSettings && now < cacheExpiresAt) return cachedSettings;
+  if (pendingRead) return pendingRead;
+  if (now < retryAt) throw new Error("Site settings temporarily unavailable");
 
-  // CI / local builds without DATABASE_URL — use defaults, do not hit Postgres
-  if (!process.env.DATABASE_URL) {
-    const defaults = mergeSettings(null);
-    cachedSettings = defaults;
-    cacheExpiresAt = now + CACHE_TTL_MS;
-    return defaults;
-  }
-
-  await ensureDebugControllerTable();
-  const db = getDebugControllerPool();
-  const result = await db.query<{ value: Partial<DebugControllerSettings> }>(
-    `SELECT value FROM debug_controller_settings WHERE key = $1 LIMIT 1`,
-    [SETTINGS_KEY]
-  );
-
-  const settings = mergeSettings(result.rows[0]?.value);
-  cachedSettings = settings;
-  cacheExpiresAt = now + CACHE_TTL_MS;
-  return settings;
+  const read = readSettings()
+    .then((settings) => {
+      if (pendingRead === read) {
+        cachedSettings = settings;
+        cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+      }
+      return settings;
+    })
+    .catch((error: unknown) => {
+      if (pendingRead === read) retryAt = Date.now() + FAILURE_BACKOFF_MS;
+      const code = (error as { code?: unknown } | null)?.code;
+      console.error("[site-settings] Database read failed", {
+        code: typeof code === "string" && /^[A-Z0-9_]{2,40}$/.test(code) ? code : "unknown",
+      });
+      throw error;
+    })
+    .finally(() => {
+      if (pendingRead === read) pendingRead = null;
+    });
+  pendingRead = read;
+  return read;
 }
 
 export async function updateDebugControllerSettings(
@@ -58,7 +98,6 @@ export async function updateDebugControllerSettings(
   const current = await getDebugControllerSettings({ bypassCache: true });
   const next = mergeSettings({ ...current, ...patch });
 
-  await ensureDebugControllerTable();
   const db = getDebugControllerPool();
   await db.query(
     `
@@ -70,6 +109,7 @@ export async function updateDebugControllerSettings(
     [SETTINGS_KEY, JSON.stringify(next)]
   );
 
+  invalidateDebugSettingsCache();
   cachedSettings = next;
   cacheExpiresAt = Date.now() + CACHE_TTL_MS;
   return next;
@@ -78,6 +118,8 @@ export async function updateDebugControllerSettings(
 export function invalidateDebugSettingsCache() {
   cachedSettings = null;
   cacheExpiresAt = 0;
+  pendingRead = null;
+  retryAt = 0;
 }
 
 /** Curated subset safe to expose on the public storefront without admin auth. */

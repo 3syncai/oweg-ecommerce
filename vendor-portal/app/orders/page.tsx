@@ -366,7 +366,7 @@ const VendorOrdersContent = () => {
   const [easyShipOrder, setEasyShipOrder] = useState<VendorOrder | null>(null)
   const [selfShipping, setSelfShipping] = useState({
     courier_partner_name: "",
-    tracking_source: "shiprocket" as "shiprocket" | "carrier_api" | "manual",
+    tracking_source: "manual" as "shiprocket" | "carrier_api" | "manual",
     awb: "",
     packing_info: "",
     tracking_url: "",
@@ -636,20 +636,26 @@ const VendorOrdersContent = () => {
     setProcessing(`invoice:${order.id}`)
     try {
       const blob = await vendorOrdersApi.generateInvoice(order.id)
+      if (!(blob instanceof Blob) || blob.size < 64 || !/pdf/i.test(blob.type || "application/pdf")) {
+        throw new Error("Invoice PDF was empty or invalid — try again")
+      }
       const url = URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
       link.download = `Invoice-${order.display_id || order.id}.pdf`
+      link.rel = "noopener"
       document.body.appendChild(link)
       link.click()
       link.remove()
-      URL.revokeObjectURL(url)
+      // Keep the object URL briefly so the download can start before revoke.
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
 
       replaceOrder({
         ...order,
         vendor_workflow: {
           ...(order.vendor_workflow || {}),
-          invoice_generated_at: new Date().toISOString(),
+          invoice_generated_at:
+            order.vendor_workflow?.invoice_generated_at || new Date().toISOString(),
         },
       })
     } catch (e: any) {
@@ -759,22 +765,14 @@ const VendorOrdersContent = () => {
               <Text size="xsmall" className="truncate text-ui-fg-subtle" title={methodLabel}>
                 {methodLabel}
               </Text>
+              {/* Invoice stays available after first generate — do not swap it for RTD. */}
               <div className="grid grid-cols-2 gap-1.5">
-                {hasInvoice ? (
-                  <ActionButton
-                    icon={<Truck size={14} />}
-                    label="RTD"
-                    disabled={busy}
-                    onClick={() => void markReadyToDispatch(order)}
-                  />
-                ) : (
-                  <ActionButton
-                    icon={<FileText size={14} />}
-                    label="Invoice"
-                    disabled={busy}
-                    onClick={() => void generateInvoice(order)}
-                  />
-                )}
+                <ActionButton
+                  icon={<FileText size={14} />}
+                  label={processing === `invoice:${order.id}` ? "…" : "Invoice"}
+                  disabled={busy}
+                  onClick={() => void generateInvoice(order)}
+                />
                 <ActionButton
                   icon={<Eye size={14} />}
                   label="View"
@@ -782,6 +780,19 @@ const VendorOrdersContent = () => {
                   onClick={() => void openDetails(order)}
                 />
               </div>
+              {hasInvoice ? (
+                <ActionButton
+                  icon={<Truck size={14} />}
+                  label={processing === `rtd:${order.id}` ? "…" : "RTD"}
+                  disabled={busy}
+                  active
+                  onClick={() => void markReadyToDispatch(order)}
+                />
+              ) : (
+                <Text size="xsmall" className="text-ui-fg-muted">
+                  Generate invoice, then RTD
+                </Text>
+              )}
             </>
           ) : (
             <div className="grid grid-cols-2 gap-1.5">
@@ -799,7 +810,7 @@ const VendorOrdersContent = () => {
                   setSelfShipOrder(order)
                   setSelfShipping({
                     courier_partner_name: workflow.self_courier_partner || "",
-                    tracking_source: workflow.self_tracking_source || "shiprocket",
+                    tracking_source: workflow.self_tracking_source || "manual",
                     awb: workflow.self_awb || "",
                     packing_info: workflow.self_packing_info || "",
                     tracking_url: workflow.tracking_url || "",
@@ -2142,9 +2153,9 @@ function SelfShippingModal({
               onChange={(event) => setField("tracking_source", event.target.value as "shiprocket" | "carrier_api" | "manual")}
               className="h-10 w-full rounded-lg border border-ui-border-base/70 bg-ui-bg-base px-3 text-sm outline-none focus:border-ui-border-strong"
             >
-              <option value="shiprocket">Shiprocket aggregator (auto status)</option>
+              <option value="manual">Manual / tracking link (Mark Delivered when arrived)</option>
               <option value="carrier_api">Direct carrier API (auto status)</option>
-              <option value="manual">Tracking link (Confirm ship moves to In Transit; delivery may need admin/feed)</option>
+              <option value="shiprocket">Shiprocket aggregator (only if you use Shiprocket)</option>
             </select>
           </label>
           <Field

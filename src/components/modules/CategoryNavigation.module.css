@@ -1,0 +1,31 @@
+.progress {
+  position: fixed;
+  z-index: 1000;
+  inset: env(safe-area-inset-top, 0px) 0 auto;
+  height: 4px;
+  overflow: hidden;
+  pointer-events: none;
+  background: #e1edda;
+}
+
+.progress span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: 0 999px 999px 0;
+  background: #477e31;
+  animation: travel 1.2s ease-in-out infinite;
+}
+
+.link:active {
+  filter: brightness(.9);
+}
+
+@keyframes travel {
+  from { transform: translateX(-20%); }
+  to { transform: translateX(222%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress span { animation: none; }
+}

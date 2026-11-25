@@ -109,7 +109,7 @@ export function ProductCard({
           )}
           {isOutOfStock && <span className={styles.stockBadge}>Out of stock</span>}
         </Link>
-        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} aria-label={isWishlisted ? `${name} is in your wishlist` : `Add ${name} to wishlist`} aria-pressed={isWishlisted} className={styles.wishlist}>
+        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} aria-label={isWishlisted ? `${name} is in your wishlist` : `Add ${name} to wishlist`} aria-pressed={isWishlisted} className={`${styles.wishlist} oweg-wishlist-motion`}>
           <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} aria-hidden />
         </button>
       </div>

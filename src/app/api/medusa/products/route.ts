@@ -15,6 +15,9 @@ import {
 } from "@/lib/medusa"
 import { getPriceListPrices } from "@/lib/price-lists"
 import { groupCatalogProductCards } from "@/lib/catalog-product-group"
+import { buildCategoryProductsPage } from "@/lib/category-listing"
+import { parseCategoryBrands, parseCategoryPrice } from "@/lib/category-filters"
+import { parseProductSort } from "@/lib/product-sort"
 import {
   MEDUSA_LIST_MAX_LIMIT,
   overfetchLimit,
@@ -49,6 +52,10 @@ function buildCacheKey(searchParams: URLSearchParams) {
       normalized.set(key, value)
     }
   })
+  if (searchParams.has("sort")) {
+    normalized.set("sort", parseProductSort(searchParams.get("sort")))
+    parseCategoryBrands(searchParams.getAll("brand")).forEach(brand => normalized.append("brand", brand))
+  }
   return normalized.toString()
 }
 
@@ -104,6 +111,21 @@ export async function GET(req: NextRequest) {
     const includeSubcategories = searchParams.get("includeSubcategories") === "1"
     const debugRaw =
       process.env.NODE_ENV !== "production" && searchParams.get("debug") === "1"
+    if (categoryId && searchParams.has("sort") && !debugRaw && !type && !tag && !collection && !collectionId) {
+      const page = await buildCategoryProductsPage({
+        categoryId,
+        includeSubcategories,
+        limit: Math.floor(normalizedLimit),
+        offset: normalizedOffset,
+        priceMin: parseCategoryPrice(priceMinParam),
+        priceMax: parseCategoryPrice(priceMaxParam),
+        dealsOnly,
+        sort: parseProductSort(searchParams.get("sort")),
+        brands: parseCategoryBrands(searchParams.getAll("brand")),
+      })
+      setCachedList(cacheKey, page)
+      return NextResponse.json(page, { headers: { "x-cache": "miss", "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } })
+    }
     if (!category && !categoryId && !collection && !collectionId && !tag && !type) {
       return NextResponse.json({
         products: [],

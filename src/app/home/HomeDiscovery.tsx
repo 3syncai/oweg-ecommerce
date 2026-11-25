@@ -102,8 +102,15 @@ export default function HomeDiscovery({ excludeIds }: { excludeIds: string[] }) 
         </div>)}
       </div>
       <div ref={sentinel} className={styles.discoveryActions}>
+        <div className={styles.discoveryStatus}>
+          {query.isFetching && showingSkeletons && (
+            <p role="status" className="inline-flex items-center gap-2 text-sm text-[#526749]">
+              <Loader2 size={16} className="motion-safe:animate-spin" aria-hidden="true" />
+              {pageCount > 0 ? "Loading more products…" : "Loading products to explore…"}
+            </p>
+          )}
+        </div>
         {query.isError && <p role="alert" className="text-sm text-red-700">More products couldn’t load. Your other products are still available.</p>}
-        {showingSkeletons && <span role="status" className="sr-only">Loading more products</span>}
         {(query.isError || ((manualLoading || autoPaused) && query.hasNextPage)) && <button type="button" className={styles.secondaryLink}
           disabled={query.isFetching} onClick={() => {
             fillBudget.current.attempts = 0
@@ -112,8 +119,7 @@ export default function HomeDiscovery({ excludeIds }: { excludeIds: string[] }) 
             else if (query.isError && !query.data) void query.refetch()
             else void query.fetchNextPage()
           }}>
-          {query.isFetching && <Loader2 size={16} className="animate-spin" />}
-          {query.isError ? "Try again" : "Load more products"}
+          {query.isFetching ? "Loading…" : query.isError ? "Try again" : "Load more products"}
         </button>}
       </div>
     </div>

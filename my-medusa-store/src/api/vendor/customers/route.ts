@@ -2,14 +2,25 @@ import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import { Pool } from "pg"
 import { requireApprovedVendor } from "../_lib/guards"
 import { filterVendorVisibleOrders } from "../../../lib/vendor-order-visibility"
+import {
+  deriveFulfillmentStatus,
+  getVendorWorkflow,
+  sumVendorLineTotal,
+} from "../../../lib/vendor-order-workflow"
+import { getSharedDbPool } from "../../../lib/db-pool"
 import { getVendorEarningsByOrderIds } from "../../../lib/vendor-earnings"
 import { RETURN_MODULE } from "../../../modules/returns"
 import type ReturnModuleService from "../../../modules/returns/service"
 import {
     buildCustomerReliability,
     customerReliabilityKey,
+    filterReturnRequestsForVendorScope,
     newCustomerReliability,
 } from "../../../lib/customer-reliability"
+import {
+    loadOwnedReturnRequestItems,
+    ownedReturnRequestIdSet,
+} from "../../../lib/vendor-owned-returns"
 
 function getPool() {
   const url = process.env.DATABASE_URL
@@ -76,6 +87,9 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
                 "created_at",
                 "items.product_id",
                 "items.variant.product_id",
+                "items.quantity",
+                "items.detail.quantity",
+                "items.unit_price",
                 "customer.first_name",
                 "customer.last_name",
                 "customer.phone",
@@ -109,19 +123,34 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
         const returnRequests = orderIds.length
           ? await returnService.listReturnRequests({ order_id: orderIds })
           : []
+        const reliabilityPool = getSharedDbPool()
+        const ownedReturnItems = await loadOwnedReturnRequestItems(
+          reliabilityPool,
+          (returnRequests || []).map((r: any) => r.id).filter(Boolean),
+          vendorProductIds
+        )
+        const vendorScopedReturns = filterReturnRequestsForVendorScope(
+          returnRequests as any[],
+          ownedReturnRequestIdSet(ownedReturnItems)
+        )
         const reliabilityByCustomer = buildCustomerReliability(
           vendorOrders.map((order: any) => {
             const meta = order.metadata || {}
-            const workflow = meta.vendor_order_workflows?.[auth.vendor_id] || {}
+            const workflow = getVendorWorkflow(meta, auth.vendor_id)
+            const fulfillmentStatus = deriveFulfillmentStatus(order, workflow)
+            const isDelivered =
+              String(workflow.stage || "").toLowerCase() === "delivered" ||
+              fulfillmentStatus === "delivered" ||
+              Boolean(workflow.shiprocket_delivered_at) ||
+              Boolean(workflow.self_delivered_at)
             return {
               id: order.id,
               customer_id: order.customer_id,
               email: order.email,
-              delivered: (order.fulfillments || []).some((f: any) => f?.delivered_at) ||
-                String(workflow.stage || "").toLowerCase() === "delivered",
+              delivered: isDelivered,
             }
           }),
-          returnRequests as any[]
+          vendorScopedReturns as any[]
         )
         const pool = getPool()
         const earningsByOrder = pool
@@ -151,17 +180,16 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             const customerId = order.customer_id || order.email || 'guest'
             const customerEmail = order.email || 'N/A'
             const meta = order.metadata || {}
-            const vendorWf =
-              meta.vendor_order_workflows?.[auth.vendor_id] ||
-              meta.vendor_order_workflows?.[String(auth.vendor_id)] ||
-              {}
+            const vendorWf = getVendorWorkflow(meta, auth.vendor_id)
+            const fulfillmentStatus = deriveFulfillmentStatus(order, vendorWf)
             const isDelivered =
-              (order.fulfillments || []).some((f: any) => f?.delivered_at) ||
-              String(meta.shiprocket_status || "").toLowerCase().includes("deliver") ||
               String(vendorWf.stage || "").toLowerCase() === "delivered" ||
+              fulfillmentStatus === "delivered" ||
+              Boolean(vendorWf.shiprocket_delivered_at) ||
+              Boolean(vendorWf.self_delivered_at) ||
               String(vendorWf.shiprocket_status || "").toLowerCase().includes("deliver")
 
-            const orderTotal = Number(order.summary?.current_order_total) || 0
+            const orderTotal = sumVendorLineTotal(order, vendorProductIds)
             const payoutAmount = Number(earningsByOrder[order.id]?.net_amount) || 0
 
             if (customerMap.has(customerId)) {

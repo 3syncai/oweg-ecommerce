@@ -281,6 +281,11 @@ export default defineMiddlewares({
       middlewares: [authenticate("customer", ["session", "bearer"])],
     },
     {
+      matcher: "/store/products/:id/reviews",
+      methods: ["POST"],
+      middlewares: [authenticate("customer", ["session", "bearer"])],
+    },
+    {
       matcher: "/store/products/*/reviews/upload-media",
       method: ["POST"],
       bodyParser: false,

@@ -1,14 +1,19 @@
 "use client";
 
 import BrandLoader from "@/components/ui/BrandLoader";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, CreditCard, LockKeyhole, MapPin, ShoppingBag } from "lucide-react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { hasDeliveryPincode, useDeliveryLocation } from "@/contexts/DeliveryLocationProvider";
+import type { CustomerAddress } from "@/hooks/useAccountAddresses";
 import { useAuth } from "@/contexts/AuthProvider";
+import { useOnlineStatus, useSlowPending } from "@/hooks/useOnlineStatus";
 import CustomerLoginModal from "@/components/auth/CustomerLoginModal";
 import { calculateOweg10Discount, OWEG10_CODE } from "@/lib/oweg10-shared";
 import {
@@ -26,7 +31,6 @@ import { calculateStatewiseShipping } from "@/lib/shipping-rules";
 import {maxRedeemableCoins as getMaxRedeemableCoins,eligibleCoinDiscount} from "@/lib/wallet-policy";
 import { findMatchingCustomerAddress } from "@/lib/customer-address-dedupe";
 import styles from "@/components/shopping/Shopping.module.css";
-import PurchaseJourney from "@/components/shopping/PurchaseJourney";
 import { cartVariantLabel } from "@/lib/cart-variant-label";
 
 type CartItem = {
@@ -77,6 +81,7 @@ type DraftWarmupEntry = {
 
 function buildCheckoutWarmupFingerprint(input: {
   paymentMethod: string;
+  customerId?: string;
   shipping: {
     email?: string;
     firstName?: string;
@@ -87,6 +92,7 @@ function buildCheckoutWarmupFingerprint(input: {
     postalCode?: string;
     phone?: string;
     state?: string;
+    countryCode?: string;
   };
   billingSame: boolean;
   billing: {
@@ -118,6 +124,7 @@ function buildCheckoutWarmupFingerprint(input: {
 }): string {
   return JSON.stringify({
     pm: input.paymentMethod,
+    customerId: input.customerId,
     sh: {
       email: input.shipping.email?.trim(),
       firstName: input.shipping.firstName?.trim(),
@@ -128,6 +135,7 @@ function buildCheckoutWarmupFingerprint(input: {
       postalCode: input.shipping.postalCode?.trim(),
       phone: input.shipping.phone?.trim(),
       state: input.shipping.state?.trim(),
+      country: input.shipping.countryCode?.trim(),
     },
     bs: input.billingSame,
     bi: input.billingSame ? null : input.billing,
@@ -148,20 +156,19 @@ function buildCheckoutWarmupFingerprint(input: {
   });
 }
 
-type CustomerAddress = {
-  id: string;
-  first_name?: string;
-  last_name?: string;
-  phone?: string;
-  address_1?: string;
-  address_2?: string;
-  city?: string;
-  province?: string;
-  postal_code?: string;
-  country_code?: string;
-  is_default_shipping?: boolean;
-  is_default_billing?: boolean;
-};
+function savedAddressFields(address: CustomerAddress) {
+  return {
+    firstName: address.first_name || "",
+    lastName: address.last_name || "",
+    phone: address.phone || "",
+    address1: address.address_1 || "",
+    address2: address.address_2 || "",
+    city: address.city || "",
+    state: address.province || "",
+    postalCode: address.postal_code?.trim() || "",
+    countryCode: address.country_code || "IN",
+  };
+}
 
 const RAZORPAY_SUCCESS = getCheckoutSuccessPath();
 const RAZORPAY_FAILED = getCheckoutFailedPath();
@@ -235,7 +242,10 @@ function getStateSuggestions(queryValue: string): string[] {
 function CheckoutPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { customer } = useAuth();
+  const { customer, expiredCustomerId, expireSession, initializing: authInitializing } = useAuth();
+  const online = useOnlineStatus();
+  const queryClient = useQueryClient();
+  const { addresses, addressList, selectedAddress, addressReviewPending, pincode, place } = useDeliveryLocation();
   const isBuyNow = searchParams?.get("buyNow") === "1";
   const variantFromQuery =
     searchParams?.get("variant_id") ||
@@ -257,7 +267,12 @@ function CheckoutPageInner() {
     sellerSelected?: boolean;
   } | null>(null);
   const [loadingCart, setLoadingCart] = useState(true);
+  const [cartLoadError, setCartLoadError] = useState(false);
+  const [cartRetry, setCartRetry] = useState(0);
+  const cartSlow = useSlowPending(online && loadingCart);
   const [processing, setProcessing] = useState(false);
+  const checkoutSlow = useSlowPending(processing);
+  const [formError, setFormError] = useState("");
   const [paymentReceivedOverlay, setPaymentReceivedOverlay] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"razorpay" | "cod">("razorpay");
@@ -282,13 +297,11 @@ function CheckoutPageInner() {
   } | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoValidating, setPromoValidating] = useState(false);
-  const [pendingLoginCheckout, setPendingLoginCheckout] = useState(false);
-  const [checkoutAfterLoginIntent, setCheckoutAfterLoginIntent] = useState(false);
   const autoCheckoutNoticeShownRef = useRef(false);
-  const performCheckoutRef = useRef<(() => Promise<void>) | null>(null);
   const draftWarmupRef = useRef<DraftWarmupEntry | null>(null);
   const draftWarmupInFlightRef = useRef<Promise<DraftOrderResponse | null> | null>(null);
-  const onlineWarmupStartedRef = useRef(false);
+  const draftWarmupStartedRef = useRef(false);
+  const checkoutSubmitInFlightRef = useRef(false);
   const checkoutFingerprintRef = useRef("");
   const createDraftOrderRef = useRef<(() => Promise<DraftOrderResponse>) | null>(null);
   const pendingPromoHydratedRef = useRef(false);
@@ -296,6 +309,7 @@ function CheckoutPageInner() {
   const [referralCode, setReferralCode] = useState("");
   const [referralCodeApplied, setReferralCodeApplied] = useState(false); // Track if auto-applied
   const [referralLoading, setReferralLoading] = useState(false);
+  const [referralCheckedCustomerId, setReferralCheckedCustomerId] = useState<string | null>(null);
   const [referralValidating, setReferralValidating] = useState(false);
   const [referralAgentName, setReferralAgentName] = useState("");
 
@@ -308,25 +322,23 @@ function CheckoutPageInner() {
   const [affiliateName, setAffiliateName] = useState("");
   const [affiliateError, setAffiliateError] = useState<string | null>(null);
 
-  // Tracks whether the inbound ?ref=CODE has been routed to the correct
-  // section (Referral vs. Affiliate) so we don't re-run the routing logic
-  // after state updates.
-  const inboundRefRoutedRef = useRef(false);
-
   // Auto-fetch referral code from database for logged in customers
   useEffect(() => {
+    const customerId = customer?.id;
+    let cancelled = false;
     const fetchReferralCode = async () => {
-      if (!customer?.id) return;
+      if (!customerId) return;
 
       setReferralLoading(true);
       try {
         const res = await fetch('/api/store/referral-code', {
-          headers: { 'x-customer-id': customer.id },
+          headers: { 'x-customer-id': customerId },
           credentials: 'include',
         });
 
         if (res.ok) {
           const data = await res.json();
+          if (cancelled) return;
           if (data.referral_code) {
             setReferralCode(data.referral_code);
             setReferralCodeApplied(data.locked !== false);
@@ -336,11 +348,15 @@ function CheckoutPageInner() {
       } catch (error) {
         console.error('Failed to fetch referral code:', error);
       } finally {
-        setReferralLoading(false);
+        if (!cancelled) {
+          setReferralCheckedCustomerId(customerId);
+          setReferralLoading(false);
+        }
       }
     };
 
     fetchReferralCode();
+    return () => { cancelled = true; };
   }, [customer?.id]);
 
   // Auto-route an inbound ?ref=CODE (from URL or persisted localStorage) to
@@ -351,11 +367,12 @@ function CheckoutPageInner() {
   //   - Customer-shared affiliate codes → Affiliate code section (existing
   //     behavior, validated when the user proceeds or via the Apply button).
   // For logged-in users we wait for the customer's saved-referral lookup to
-  // finish before routing, so an already-locked code is never overridden.
+  // finish before routing. A locked partner code only blocks replacing the
+  // partner referral. Customer affiliate codes use their own field.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (inboundRefRoutedRef.current) return;
-    if (customer?.id && referralLoading) return;
+    if (authInitializing) return;
+    if (customer?.id && referralCheckedCustomerId !== customer.id) return;
 
     const fromUrl = searchParams?.get("ref")?.trim() || "";
     let stored = "";
@@ -364,22 +381,9 @@ function CheckoutPageInner() {
     } catch {
       /* ignore */
     }
-    const code = (fromUrl || stored).trim().toUpperCase();
-
-    inboundRefRoutedRef.current = true;
+    const cookie = document.cookie.match(/(?:^|;\s*)oweg_affiliate_ref=([^;]*)/)?.[1] || "";
+    const code = (fromUrl || stored || cookie).trim().toUpperCase();
     if (!code) return;
-
-    // If the customer already has a locked referral code, keep it and just
-    // clear the inbound storage so the affiliate field doesn't pick it up.
-    if (referralCodeApplied) {
-      try {
-        window.localStorage.removeItem("oweg_affiliate_ref");
-        document.cookie = "oweg_affiliate_ref=; Max-Age=0; path=/; SameSite=Lax";
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
 
     let cancelled = false;
 
@@ -393,6 +397,7 @@ function CheckoutPageInner() {
         if (cancelled) return;
 
         if (referralData?.valid) {
+          if (referralCodeApplied) return;
           // Agent referral code → populate the Referral code section.
           setReferralCode(code);
           setReferralAgentName(referralData.agent_name || "");
@@ -460,7 +465,7 @@ function CheckoutPageInner() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.id, referralLoading]);
+  }, [authInitializing, customer?.id, referralCheckedCustomerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -627,7 +632,7 @@ function CheckoutPageInner() {
       // 1. Validate the code
       const validateRes = await fetch(`/api/store/validate-referral?code=${encodeURIComponent(trimmed)}`)
       const validateData = await validateRes.json();
-      
+
       if (!validateData.valid) {
         toast.error("Invalid referral code.");
         setReferralValidating(false);
@@ -646,7 +651,7 @@ function CheckoutPageInner() {
         });
 
         const saveData = await saveRes.json();
-        
+
         if (!saveRes.ok) {
            // It might fail if they already have one locked
            const reason = saveData?.message || saveData?.error || "Could not apply referral code.";
@@ -664,7 +669,7 @@ function CheckoutPageInner() {
       setReferralCodeApplied(true);
       setReferralAgentName(validateData.agent_name || "");
       toast.success(`Referral applied: ${validateData.agent_name}`);
-      
+
     } catch {
       toast.error("Error applying referral code.");
     } finally {
@@ -734,9 +739,18 @@ function CheckoutPageInner() {
     countryCode: "IN",
   });
   const [billing, setBilling] = useState({ ...shipping });
-  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
-  const [defaultAddress, setDefaultAddress] = useState<CustomerAddress | null>(null);
-  const [addressTouched, setAddressTouched] = useState(false);
+  const recoveryDraft = useRef<{
+    owner: string;
+    shipping: typeof shipping;
+    billing: typeof billing;
+    billingSame: boolean;
+  } | null>(null);
+  const [hasRecoveryDraft, setHasRecoveryDraft] = useState(false);
+  const defaultAddress = addresses.find(addr => addr.is_default_shipping) || addresses[0];
+  const shippingTouched = useRef(false);
+  const billingTouched = useRef(false);
+  const addressOwner = useRef<string | undefined>(undefined);
+  const prefilledFromAddress = useRef(false);
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [showSaveDefault, setShowSaveDefault] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
@@ -762,86 +776,68 @@ function CheckoutPageInner() {
     }
   }, [customer, referralCode]);
 
-  // Prefill PIN code and State from header location selector (localStorage)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const savedPin = window.localStorage.getItem("oweg_pincode") || "";
-    const savedPlace = window.localStorage.getItem("oweg_pincode_place") || "";
-    // Extract state: last segment of "City, District, State" string
-    const statePart = savedPlace ? (savedPlace.split(",").pop() || "").trim() : "";
-    if (savedPin || statePart) {
-      setShipping((prev) => ({
-        ...prev,
-        postalCode: prev.postalCode || savedPin,
-        state: prev.state || statePart,
-      }));
-      setBilling((prev) => ({
-        ...prev,
-        postalCode: prev.postalCode || savedPin,
-        state: prev.state || statePart,
-      }));
+  const shippingAddress = selectedAddress ?? (defaultAddress && hasDeliveryPincode(defaultAddress) ? defaultAddress : addresses.find(hasDeliveryPincode));
+  const billingAddress = addresses.find(address => address.is_default_billing);
+  const areaState = place.split(",").pop()?.trim() || "";
+  const customerId = customer?.id;
+
+  useLayoutEffect(() => {
+    const previousOwner = addressOwner.current;
+    addressOwner.current = customerId;
+    if (previousOwner === customerId) return;
+    if (previousOwner && !customerId && expiredCustomerId === previousOwner) {
+      if (shippingTouched.current || billingTouched.current) {
+        recoveryDraft.current = { owner: previousOwner, shipping, billing, billingSame };
+        setHasRecoveryDraft(true);
+      }
     }
-  }, []);
+    if (previousOwner) {
+      if (!isBuyNow) setCart(null);
+      shippingTouched.current = false;
+      billingTouched.current = false;
+      prefilledFromAddress.current = false;
+      draftWarmupRef.current = null;
+      setShipping({ ...savedAddressFields({ id: "" }), email: customer?.email || "" });
+      setBilling({ ...savedAddressFields({ id: "" }), email: customer?.email || "" });
+      setBillingSame(true);
+      setSaveAsDefault(false);
+      setFormError("");
+    }
+    if (customerId && recoveryDraft.current) {
+      const draft = recoveryDraft.current;
+      recoveryDraft.current = null;
+      setHasRecoveryDraft(false);
+      if (draft.owner === customerId) {
+        shippingTouched.current = true;
+        billingTouched.current = true;
+        setShipping(draft.shipping);
+        setBilling(draft.billing);
+        setBillingSame(draft.billingSame);
+        toast.success("Checkout details restored", { description: "Review your order before continuing." });
+      }
+    }
+  }, [billing, billingSame, customerId, customer?.email, expiredCustomerId, isBuyNow, shipping]);
 
   useEffect(() => {
-    const loadAddresses = async () => {
-      if (!customer?.id) {
-        setAddresses([]);
-        setDefaultAddress(null);
-        return;
+    if (!shippingTouched.current) {
+      if (shippingAddress) {
+        setShipping(prev => ({ ...prev, ...savedAddressFields(shippingAddress) }));
+        prefilledFromAddress.current = true;
+      } else if (addressList.isSuccess || !customerId) {
+        const clear = prefilledFromAddress.current;
+        prefilledFromAddress.current = false;
+        setShipping(prev => ({
+          ...prev, ...(clear ? savedAddressFields({ id: "" }) : {}), postalCode: pincode, state: areaState,
+        }));
       }
-      try {
-        const res = await fetch("/api/medusa/customer-addresses", {
-          cache: "no-store",
-          credentials: "include",
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        const list = (data.addresses || data?.customer?.addresses || []) as CustomerAddress[];
-        setAddresses(list);
-        const defaultShipping = list.find((addr) => addr.is_default_shipping) || list[0] || null;
-        const defaultBilling = list.find((addr) => addr.is_default_billing) || defaultShipping;
-        setDefaultAddress(defaultShipping);
-        if (!addressTouched) {
-          if (defaultShipping) {
-            setShipping((prev) => ({
-              ...prev,
-              firstName: defaultShipping.first_name || prev.firstName,
-              lastName: defaultShipping.last_name || prev.lastName,
-              phone: defaultShipping.phone || prev.phone,
-              address1: defaultShipping.address_1 || prev.address1,
-              address2: defaultShipping.address_2 || prev.address2,
-              city: defaultShipping.city || prev.city,
-              state: defaultShipping.province || prev.state,
-              postalCode: defaultShipping.postal_code || prev.postalCode,
-              countryCode: defaultShipping.country_code || prev.countryCode || "IN",
-            }));
-          }
-          if (defaultBilling) {
-            setBilling((prev) => ({
-              ...prev,
-              firstName: defaultBilling.first_name || prev.firstName,
-              lastName: defaultBilling.last_name || prev.lastName,
-              phone: defaultBilling.phone || prev.phone,
-              address1: defaultBilling.address_1 || prev.address1,
-              address2: defaultBilling.address_2 || prev.address2,
-              city: defaultBilling.city || prev.city,
-              state: defaultBilling.province || prev.state,
-              postalCode: defaultBilling.postal_code || prev.postalCode,
-              countryCode: defaultBilling.country_code || prev.countryCode || "IN",
-            }));
-          }
-          if (defaultBilling && defaultShipping) {
-            setBillingSame(defaultBilling.id === defaultShipping.id);
-          }
-        }
-      } catch (error) {
-        console.warn("Failed to load customer addresses", error);
-      }
-    };
-
-    loadAddresses();
-  }, [customer?.id, addressTouched]);
+    }
+    if (!billingTouched.current && billingAddress) {
+      setBilling(prev => ({ ...prev, ...savedAddressFields(billingAddress) }));
+      setBillingSame(!shippingAddress || billingAddress.id === shippingAddress.id);
+    } else if (!billingTouched.current && !billingAddress) {
+      setBillingSame(true);
+    }
+  }, [addressList.isSuccess, areaState, billingAddress, customerId, pincode, shippingAddress]);
 
   useEffect(() => {
     if (!defaultAddress) {
@@ -878,12 +874,9 @@ function CheckoutPageInner() {
       postal_code: shipping.postalCode,
       country_code: shipping.countryCode || "IN",
       is_default_shipping: true,
-      is_default_billing: true,
-      address_name: "Home",
     };
 
     const matched =
-      defaultAddress ||
       findMatchingCustomerAddress(addresses, {
         address_1: payload.address_1,
         address_2: payload.address_2,
@@ -894,22 +887,18 @@ function CheckoutPageInner() {
 
     try {
       setSavingAddress(true);
-      if (matched?.id) {
-        await fetch(`/api/medusa/customer-addresses/${encodeURIComponent(matched.id)}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(payload),
-        });
-      } else {
-        // API upserts if a matching row already exists server-side
-        await fetch("/api/medusa/customer-addresses", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(payload),
-        });
-      }
+      const endpoint = matched?.id
+        ? `/api/medusa/customer-addresses/${encodeURIComponent(matched.id)}`
+        : "/api/medusa/customer-addresses";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        keepalive: true,
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error("Unable to save the default address");
+      void queryClient.invalidateQueries({ queryKey: ["account-addresses", customer.id] });
     } catch (error) {
       console.warn("Failed to save default address", error);
     } finally {
@@ -962,9 +951,17 @@ function CheckoutPageInner() {
   }, [isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery, sellerSelectedFromQuery]);
 
   useEffect(() => {
+    if (!isBuyNow && (!online || (expiredCustomerId && !customerId))) {
+      setLoadingCart(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 15_000);
+    let cancelled = false;
     const loadCart = async () => {
       try {
         setLoadingCart(true);
+        setCartLoadError(false);
         const fallbackBuyNow =
           buyNowItem ||
           (isBuyNow && variantFromQuery
@@ -997,22 +994,28 @@ function CheckoutPageInner() {
         }
         const res = await fetch("/api/medusa/cart", {
           cache: "no-store",
+          signal: controller.signal,
           headers: {
             ...(guestCartId ? { "x-guest-cart-id": guestCartId } : {}),
           },
         });
         if (!res.ok) throw new Error("Cart unavailable");
         const data = (await res.json()) as CartResponse;
-        if (data.cart) setCart(data.cart);
-      } catch (err) {
-        console.error(err);
-        toast.error("Unable to load cart");
+        if (!cancelled) setCart(data.cart ?? null);
+      } catch {
+        if (!cancelled) setCartLoadError(true);
       } finally {
-        setLoadingCart(false);
+        window.clearTimeout(timer);
+        if (!cancelled) setLoadingCart(false);
       }
     };
     void loadCart();
-  }, [guestCartId, buyNowItem, isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [guestCartId, buyNowItem, isBuyNow, variantFromQuery, qtyFromQuery, priceFromQuery, sellerSelectedFromQuery, cartRetry, customerId, expiredCustomerId, online]);
 
   const clientTotals = useMemo(() => {
     const itemsTotal =
@@ -1269,6 +1272,7 @@ function CheckoutPageInner() {
     setBilling((prev) => (prev.email === normalizedBilling.email ? prev : { ...prev, email: normalizedBilling.email }));
 
     const requestPayload = {
+      reviewedCartPrices: isBuyNow ? undefined : cart?.items?.map(item => ({ id: item.id, price: item.unit_price })),
       shipping: normalizedShipping,
       billing: normalizedBilling,
       billingSameAsShipping: billingSame,
@@ -1291,15 +1295,6 @@ function CheckoutPageInner() {
         : undefined,
     };
 
-    console.log('🛒 [Frontend Debug] createDraftOrder Payload:', requestPayload);
-
-    // Don't block draft creation on address save latency
-    if (saveAsDefault) {
-      void saveDefaultAddress().catch((err) => {
-        console.warn("Failed to save default address during checkout", err);
-      });
-    }
-
     const res = await fetch("/api/checkout/draft-order", {
       method: "POST",
       headers: {
@@ -1309,13 +1304,18 @@ function CheckoutPageInner() {
       body: JSON.stringify(requestPayload),
     });
     if (!res.ok) {
+      if (res.status === 401 && customer?.id) {
+        expireSession(customer.id);
+        throw new Error("Your session expired. Sign in again to continue checkout.");
+      }
       const err = await res.json().catch(() => ({}));
       const message = typeof err.error === "string" ? err.error : null;
       const normalized = message ? message.toLowerCase() : "";
       if (normalized.includes("insufficient_inventory") || normalized.includes("does not have the required inventory")) {
         throw new Error("One or more items are out of stock. Please update quantity or remove the item.");
       }
-      throw new Error(message || "Failed to start checkout");
+      const reference = typeof err.reference === "string" ? err.reference : null;
+      throw new Error(reference && message ? `${message} Reference ${reference}.` : message || "Failed to start checkout. Please try again.");
     }
     return (await res.json()) as DraftOrderResponse;
   };
@@ -1325,6 +1325,7 @@ function CheckoutPageInner() {
   const getCheckoutWarmupFingerprint = () =>
     buildCheckoutWarmupFingerprint({
       paymentMethod,
+      customerId: customer?.id,
       shipping,
       billingSame,
       billing,
@@ -1380,12 +1381,14 @@ function CheckoutPageInner() {
     return draft;
   };
 
-  // Prepare at most one online draft per checkout visit once all details are
+  // Prepare at most one draft per checkout visit once all details are
   // entered. A later edit invalidates its fingerprint and falls back to click.
   useEffect(() => {
     if (!customer?.id) return;
-    if (processing || affiliateValidating || totalsLoading || !isOweg10StatusReady || payableTotal <= 0) return;
-    if (paymentMethod === "razorpay" && onlineWarmupStartedRef.current) return;
+    if (!online || processing || addressReviewPending || affiliateValidating || totalsLoading || !isOweg10StatusReady || payableTotal <= 0) return;
+    if (!isBuyNow && (loadingCart || cartLoadError)) return;
+    if (paymentMethod === "razorpay") return; // Reserve online stock only on explicit checkout.
+    if (draftWarmupStartedRef.current) return;
     if (draftWarmupInFlightRef.current) return;
 
     const shippingReady =
@@ -1416,10 +1419,10 @@ function CheckoutPageInner() {
 
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      if (cancelled) return;
+      if (cancelled || checkoutSubmitInFlightRef.current || draftWarmupStartedRef.current) return;
       const create = createDraftOrderRef.current;
       if (!create) return;
-      if (paymentMethod === "razorpay") onlineWarmupStartedRef.current = true;
+      draftWarmupStartedRef.current = true;
 
       const warmPromise = create()
         .then((draft) => {
@@ -1433,10 +1436,7 @@ function CheckoutPageInner() {
           };
           return draft;
         })
-        .catch((err) => {
-          console.warn("COD draft warmup failed", err);
-          return null;
-        })
+        .catch(() => null)
         .finally(() => {
           if (draftWarmupInFlightRef.current === warmPromise) {
             draftWarmupInFlightRef.current = null;
@@ -1444,7 +1444,7 @@ function CheckoutPageInner() {
         });
 
       draftWarmupInFlightRef.current = warmPromise;
-    }, paymentMethod === "razorpay" ? 1200 : 700);
+    }, 700);
 
     return () => {
       cancelled = true;
@@ -1453,8 +1453,12 @@ function CheckoutPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fingerprint deps listed explicitly
   }, [
     paymentMethod,
+    online,
     processing,
     affiliateValidating,
+    addressReviewPending,
+    loadingCart,
+    cartLoadError,
     totalsLoading,
     isOweg10StatusReady,
     customer?.id,
@@ -1465,6 +1469,7 @@ function CheckoutPageInner() {
     shipping.address2,
     shipping.city,
     shipping.postalCode,
+    shipping.countryCode,
     shipping.phone,
     shipping.state,
     billingSame,
@@ -1476,6 +1481,7 @@ function CheckoutPageInner() {
     billing.city,
     billing.state,
     billing.postalCode,
+    billing.countryCode,
     billing.phone,
     referralCode,
     customerAffiliateCode,
@@ -1502,16 +1508,18 @@ function CheckoutPageInner() {
     } catch { /* Storage is optional; leave a newer shopping selection intact. */ }
   };
 
-  const finalizeCodCheckout = (draft: DraftOrderResponse) => {
+  const finalizeCodCheckout = async (draft: DraftOrderResponse) => {
     rememberCheckoutItem(draft.medusaOrderId);
-    void fetch("/api/checkout/cod", {
+    const confirmation = await fetch("/api/checkout/cod", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
       keepalive: true,
-    }).catch((err) => {
-      console.error("cod background confirm failed", err);
     });
+    if (!confirmation.ok) {
+      const problem = await confirmation.json().catch(() => ({}));
+      throw new Error(problem.error || "We could not confirm your order. Please try again.");
+    }
     setProcessing(false);
     router.push(
       `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1&cod=1`
@@ -1629,6 +1637,10 @@ function CheckoutPageInner() {
         body: JSON.stringify({ medusaOrderId: draft.medusaOrderId, amount: targetRupees }),
       });
       if (!createRes.ok) {
+        if (createRes.status === 401 && customer?.id) {
+          expireSession(customer.id);
+          throw new Error("Your session expired. Sign in again to continue checkout.");
+        }
         const err = await createRes.json().catch(() => ({}));
         if (createRes.status === 404 || err.error === "order_not_found" || err.error === "Order not found") {
           draftWarmupRef.current = null;
@@ -1709,7 +1721,12 @@ function CheckoutPageInner() {
   };
 
   const performCheckout = async () => {
-    if (processing || affiliateValidating) return;
+    if (checkoutSubmitInFlightRef.current || processing || affiliateValidating || addressReviewPending) return;
+    if (!isBuyNow && (loadingCart || cartLoadError)) return;
+    if (!online || !navigator.onLine) {
+      setFormError("You’re offline. Reconnect to continue checkout.");
+      return;
+    }
     if (!isOweg10StatusReady) {
       if (!autoCheckoutNoticeShownRef.current) {
         toast.message("Checking OWEG10 eligibility before checkout...");
@@ -1726,7 +1743,7 @@ function CheckoutPageInner() {
       !shipping.postalCode?.trim() ||
       !shipping.phone?.trim();
     if (missingShipping) {
-      toast.error("Complete shipping details before paying.");
+      setFormError("Complete your shipping details before paying.");
       return;
     }
 
@@ -1738,6 +1755,10 @@ function CheckoutPageInner() {
       toast.error("Cart is empty. Please add an item before checkout.");
       return;
     }
+    checkoutSubmitInFlightRef.current = true;
+    setFormError("");
+    // An explicit submit also consumes the single background preparation slot.
+    draftWarmupStartedRef.current = true;
     setProcessing(true);
     try {
       if (isBuyNow && !buyNowItem) {
@@ -1748,8 +1769,13 @@ function CheckoutPageInner() {
         resolveDraftOrderForCheckout(),
         paymentMethod === "razorpay" ? loadRazorpayScript() : Promise.resolve(),
       ]);
+      if (addressOwner.current !== customer?.id) {
+        setProcessing(false);
+        return;
+      }
+      if (saveAsDefault) void saveDefaultAddress();
       if (paymentMethod === "cod") {
-        finalizeCodCheckout(draft);
+        await finalizeCodCheckout(draft);
         return;
       }
       await handleStandardRazorpay(draft, payableTotal);
@@ -1757,40 +1783,38 @@ function CheckoutPageInner() {
       console.error(err);
       const message = err instanceof Error ? err.message : "Checkout failed";
       if (
-        /order not found/i.test(message) ||
+        /order not found|requested quantity|out of stock|checkout has expired/i.test(message) ||
         /order_not_found/i.test(message)
       ) {
         draftWarmupRef.current = null;
         draftWarmupInFlightRef.current = null;
       }
-      toast.error(message);
+      setFormError(message);
       setProcessing(false);
+    } finally {
+      checkoutSubmitInFlightRef.current = false;
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customer) {
-      setCheckoutAfterLoginIntent(true);
       setLoginModalOpen(true);
       return;
     }
     await performCheckout();
   };
 
-  performCheckoutRef.current = performCheckout;
-
-  useEffect(() => {
-    if (!pendingLoginCheckout || !customer?.id || !isOweg10StatusReady || processing) return;
-    setPendingLoginCheckout(false);
-    void performCheckoutRef.current?.();
-  }, [pendingLoginCheckout, customer?.id, isOweg10StatusReady, processing]);
-
   const cartItems = cart?.items || [];
+  const reviewCart = !isBuyNow && /out of stock|requested quantity/i.test(formError)
+    ? <a href="/cart" className="ml-2 font-semibold underline">Review cart</a>
+    : null;
   const payDisabled =
+    !online ||
     processing ||
     affiliateValidating ||
-    (!isBuyNow && !cartItems.length) ||
+    addressReviewPending ||
+    (!isBuyNow && (loadingCart || cartLoadError || !cartItems.length)) ||
     (isBuyNow && !buyNowItem && !variantFromQuery);
   const payButtonLabel = processing
     ? paymentMethod === "cod"
@@ -1800,7 +1824,6 @@ function CheckoutPageInner() {
       ? `Place COD order (${formatInr(payableTotal)})`
       : `Pay securely (${formatInr(payableTotal)})`;
   const openCheckoutLogin = () => {
-    setCheckoutAfterLoginIntent(true);
     setLoginModalOpen(true);
   };
 
@@ -1816,162 +1839,224 @@ function CheckoutPageInner() {
     styles.paymentIdle;
 
   return (
-    <div className={`${styles.page} min-h-screen`}>
+    <div className={`${styles.page} ${styles.checkoutPage} min-h-screen`}>
       <div className={`${styles.container} ${styles.checkoutContainer}`}>
-        <div className={styles.heading}>
-          <div><h1>Checkout</h1><p>Confirm your delivery details and review your total.</p></div>
-          <PurchaseJourney current="checkout" />
+        <div className={styles.checkoutHeading}>
+          <div className={styles.checkoutTitle}>
+            <h1>Checkout</h1>
+            <span><LockKeyhole size={14} aria-hidden="true" /> Secure checkout</span>
+          </div>
+          {customer && (
+            <nav className={styles.checkoutNavigation} aria-label="Checkout sections">
+              <a href="#checkout-delivery"><MapPin size={16} aria-hidden="true" /> Delivery</a>
+              <a href="#checkout-payment"><CreditCard size={16} aria-hidden="true" /> Payment</a>
+              <a href="#checkout-review"><ShoppingBag size={16} aria-hidden="true" /> Summary</a>
+            </nav>
+          )}
         </div>
-        <form id="checkout-form" onSubmit={handleSubmit} className={styles.checkoutForm}>
+        <form id="checkout-form" onSubmit={handleSubmit} className={styles.checkoutForm}
+          onChangeCapture={() => { if (formError) setFormError(""); }}
+          onInvalidCapture={event => {
+            const field = event.target;
+            if (field instanceof HTMLInputElement && field === event.currentTarget.querySelector("input:invalid")) {
+              const label = field.getAttribute("aria-label");
+              setFormError(label ? `${label} — ${field.validationMessage}` : field.validationMessage);
+            }
+          }}>
           <div className={styles.checkoutFields}>
             {!customer ? (
               <section className={checkoutCard}>
-                <h2 className="text-lg font-semibold text-[#2c342f]">Login required to continue checkout</h2>
+                <h2 className="text-lg font-semibold text-[#2c342f]">{expiredCustomerId ? "Your session expired" : "Sign in to continue checkout"}</h2>
                 <p className="text-sm text-slate-600">
-                  Please sign in first.
+                  {hasRecoveryDraft ? "Sign in with the same account to restore your details. Keep this tab open." : "Sign in to review and place your order."}
                 </p>
                 <Button
                   type="button"
                   className={checkoutCta}
                   onClick={() => {
-                    setCheckoutAfterLoginIntent(false);
                     setLoginModalOpen(true);
                   }}
                 >
-                  Login to continue
+                  {expiredCustomerId ? "Sign in again" : "Sign in to continue"}
                 </Button>
               </section>
             ) : (
               <>
-            <section className={checkoutCard}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-[#2c342f]">Shipping details</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Where should we deliver this order?</p>
-                </div>
-                <span className="shrink-0 rounded-full bg-[#f0f5ef] px-2.5 py-1 text-[11px] font-medium text-slate-600">
-                  Required
-                </span>
+            <section id="checkout-delivery" tabIndex={-1} className={checkoutCard} aria-labelledby="checkout-delivery-title">
+              <div className={styles.checkoutSectionHeading}>
+                <span><MapPin size={20} aria-hidden="true" /></span>
+                <h2 id="checkout-delivery-title">Delivery address</h2>
               </div>
-              {showSaveDefault && customer?.id && (
-                <label className="flex items-center gap-2.5 text-sm text-slate-600 rounded-xl bg-[#f7faf5] border border-slate-200/60 px-3 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={saveAsDefault}
-                    onChange={(e) => setSaveAsDefault(e.target.checked)}
-                    disabled={savingAddress}
-                    className="h-4 w-4 rounded border-slate-300 text-[var(--oweg-green)] focus:ring-[var(--oweg-green)]"
-                  />
-                  <span>Save this as default address for next time</span>
-                  {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
+              {addresses.some(hasDeliveryPincode) && (
+                <label className="block text-sm font-medium text-slate-700">
+                  Use a saved shipping address
+                  <select
+                    value=""
+                    disabled={processing}
+                    className={`${checkoutField} mt-1 block w-full`}
+                    onChange={event => {
+                      const address = addresses.find(item => item.id === event.target.value && hasDeliveryPincode(item));
+                      if (!address) return;
+                      shippingTouched.current = true;
+                      setShipping(prev => ({ ...prev, ...savedAddressFields(address) }));
+                    }}
+                  >
+                    <option value="">Choose a saved address</option>
+                    {addresses.filter(hasDeliveryPincode).map(address => (
+                      <option key={address.id} value={address.id}>
+                        {[address.address_name, address.address_1, address.city, address.postal_code].filter(Boolean).join(" · ")}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               )}
-              <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
-                <Input
-                  required
-                  aria-label="First name"
-                  placeholder="First name"
-                  className={checkoutField}
-                  value={shipping.firstName}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, firstName: e.target.value });
-                  }}
-                />
-                <Input
-                  aria-label="Last name"
-                  placeholder="Last name"
-                  className={checkoutField}
-                  value={shipping.lastName}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, lastName: e.target.value });
-                  }}
-                />
-                <Input
-                  required
-                  type="email"
-                  aria-label="Email"
-                  placeholder="Email"
-                  value={shipping.email}
-                  onChange={(e) => setShipping({ ...shipping, email: normalizeEmail(e.target.value) })}
-                  onBlur={(e) => setShipping((prev) => ({ ...prev, email: normalizeEmail(e.target.value) }))}
-                  inputMode="email"
-                  title="Enter a valid email address"
-                  readOnly={!!customer?.email}
-                  className={
-                    customer?.email
-                      ? `${checkoutField} bg-slate-50 cursor-not-allowed`
-                      : checkoutField
-                  }
-                  aria-readonly={!!customer?.email}
-                />
-                <Input
-                  required
-                  type="tel"
-                  aria-label="Phone"
-                  placeholder="Phone"
-                  className={checkoutField}
-                  value={shipping.phone}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, phone: toDigits(e.target.value, 10) });
-                  }}
-                  inputMode="numeric"
-                  pattern="^[0-9]{10}$"
-                  maxLength={10}
-                  title="Enter a 10-digit phone number"
-                />
-                <Input
-                  required
-                  aria-label="Address line 1"
-                  placeholder="Address line 1"
-                  className={`md:col-span-2 ${checkoutField}`}
-                  value={shipping.address1}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, address1: e.target.value });
-                  }}
-                />
-                <Input
-                  aria-label="Address line 2"
-                  placeholder="Address line 2"
-                  className={`md:col-span-2 ${checkoutField}`}
-                  value={shipping.address2}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, address2: e.target.value });
-                  }}
-                />
-                <Input
-                  required
-                  aria-label="City"
-                  placeholder="City"
-                  className={checkoutField}
-                  value={shipping.city}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, city: e.target.value });
-                  }}
-                />
-                <div className="relative">
+              <div className={styles.checkoutAddressGrid}>
+                <label>
+                  <span>First name</span>
                   <Input
                     required
-                    aria-label="State"
-                    placeholder="State"
+                    aria-label="First name"
+                    autoComplete="given-name"
                     className={checkoutField}
-                    value={shipping.state}
-                    autoComplete="off"
-                    onFocus={() => setStateDropdownOpen(true)}
-                    onBlur={() => {
-                      setTimeout(() => setStateDropdownOpen(false), 120);
-                    }}
+                    value={shipping.firstName}
                     onChange={(e) => {
-                      setAddressTouched(true);
-                      setStateDropdownOpen(true);
-                      setShipping((prev) => ({ ...prev, state: e.target.value }));
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, firstName: e.target.value });
                     }}
                   />
+                </label>
+                <label>
+                  <span>Last name <small>Optional</small></span>
+                  <Input
+                    aria-label="Last name"
+                    autoComplete="family-name"
+                    className={checkoutField}
+                    value={shipping.lastName}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, lastName: e.target.value });
+                    }}
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Email</span>
+                  <Input
+                    required
+                    type="email"
+                    aria-label="Email"
+                    autoComplete="email"
+                    value={shipping.email}
+                    onChange={(e) => { shippingTouched.current = true; setShipping({ ...shipping, email: normalizeEmail(e.target.value) }); }}
+                    onBlur={(e) => setShipping((prev) => ({ ...prev, email: normalizeEmail(e.target.value) }))}
+                    inputMode="email"
+                    title="Enter a valid email address"
+                    readOnly={!!customer?.email}
+                    className={
+                      customer?.email
+                        ? `${checkoutField} bg-slate-50 cursor-not-allowed`
+                        : checkoutField
+                    }
+                    aria-readonly={!!customer?.email}
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Mobile number</span>
+                  <Input
+                    required
+                    type="tel"
+                    aria-label="Phone"
+                    autoComplete="tel-national"
+                    className={checkoutField}
+                    value={shipping.phone}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, phone: toDigits(e.target.value, 10) });
+                    }}
+                    inputMode="numeric"
+                    pattern="^[0-9]{10}$"
+                    maxLength={10}
+                    title="Enter a 10-digit phone number"
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Address line 1</span>
+                  <Input
+                    required
+                    aria-label="Address line 1"
+                    autoComplete="address-line1"
+                    className={checkoutField}
+                    value={shipping.address1}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, address1: e.target.value });
+                    }}
+                  />
+                </label>
+                <label className={styles.checkoutWideField}>
+                  <span>Address line 2 <small>Optional</small></span>
+                  <Input
+                    aria-label="Address line 2"
+                    autoComplete="address-line2"
+                    className={checkoutField}
+                    value={shipping.address2}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, address2: e.target.value });
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>City</span>
+                  <Input
+                    required
+                    aria-label="City"
+                    autoComplete="address-level2"
+                    className={checkoutField}
+                    value={shipping.city}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, city: e.target.value });
+                    }}
+                  />
+                </label>
+                <label>
+                  <span>PIN code</span>
+                  <Input
+                    required
+                    aria-label="PIN code"
+                    autoComplete="postal-code"
+                    className={checkoutField}
+                    value={shipping.postalCode}
+                    onChange={(e) => {
+                      shippingTouched.current = true;
+                      setShipping({ ...shipping, postalCode: toDigits(e.target.value, 6) });
+                    }}
+                    inputMode="numeric"
+                    pattern="^[0-9]{6}$"
+                    maxLength={6}
+                    title="Enter a 6-digit PIN code"
+                  />
+                </label>
+                <div className={styles.checkoutWideField}>
+                  <label className="block">
+                    <span>State</span>
+                    <Input
+                      required
+                      aria-label="State"
+                      className={checkoutField}
+                      value={shipping.state}
+                      autoComplete="off"
+                      onFocus={() => setStateDropdownOpen(true)}
+                      onBlur={() => {
+                        setTimeout(() => setStateDropdownOpen(false), 120);
+                      }}
+                      onChange={(e) => {
+                        shippingTouched.current = true;
+                        setStateDropdownOpen(true);
+                        setShipping((prev) => ({ ...prev, state: e.target.value }));
+                      }}
+                    />
+                  </label>
                   {stateDropdownOpen && (
                     <div className="absolute z-20 mt-1.5 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200/80 bg-white shadow-xl">
                       {shippingStateSuggestions.length > 0 ? (
@@ -1981,7 +2066,7 @@ function CheckoutPageInner() {
                             type="button"
                             className="w-full px-3.5 py-2.5 text-left text-sm text-slate-700 hover:bg-[#f2f9ef] transition-colors"
                             onMouseDown={() => {
-                              setAddressTouched(true);
+                              shippingTouched.current = true;
                               setShipping((prev) => ({ ...prev, state: stateName }));
                               setStateDropdownOpen(false);
                             }}
@@ -1995,26 +2080,24 @@ function CheckoutPageInner() {
                     </div>
                   )}
                 </div>
-                <Input
-                  required
-                  aria-label="PIN code"
-                  placeholder="PIN code"
-                  className={checkoutField}
-                  value={shipping.postalCode}
-                  onChange={(e) => {
-                    setAddressTouched(true);
-                    setShipping({ ...shipping, postalCode: toDigits(e.target.value, 6) });
-                  }}
-                  inputMode="numeric"
-                  pattern="^[0-9]{6}$"
-                  maxLength={6}
-                  title="Enter a 6-digit PIN code"
-                />
               </div>
+              {showSaveDefault && customer?.id && (
+                <label className={styles.checkoutSaveAddress}>
+                  <input
+                    type="checkbox"
+                    checked={saveAsDefault}
+                    onChange={(e) => setSaveAsDefault(e.target.checked)}
+                    disabled={savingAddress}
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--oweg-green)] focus:ring-[var(--oweg-green)]"
+                  />
+                  <span>Save this as default address for next time</span>
+                  {savingAddress && <span className="text-xs text-slate-400">Saving...</span>}
+                </label>
+              )}
             </section>
 
             <section className={checkoutCard}>
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-[#2c342f]">Billing details</h2>
                   <p className="text-xs text-slate-500 mt-0.5">Invoice address for this order</p>
@@ -2024,6 +2107,7 @@ function CheckoutPageInner() {
                     type="checkbox"
                     checked={billingSame}
                     onChange={(e) => {
+                      billingTouched.current = true;
                       const checked = e.target.checked;
                       setBillingSame(checked);
                       if (checked) {
@@ -2036,7 +2120,7 @@ function CheckoutPageInner() {
                 </label>
               </div>
               {!billingSame && (
-                <div className="grid md:grid-cols-2 gap-3.5 md:gap-4">
+                <div className="grid md:grid-cols-2 gap-3.5 md:gap-4" onChangeCapture={() => { billingTouched.current = true; }}>
                   <Input
                     required
                     aria-label="First name"
@@ -2161,11 +2245,11 @@ function CheckoutPageInner() {
               )}
             </section>
 
-            <section className={checkoutCard}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold text-[#2c342f]">Payment</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Choose how you want to pay</p>
+            <section id="checkout-payment" tabIndex={-1} className={checkoutCard} aria-labelledby="checkout-payment-title">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className={styles.checkoutSectionHeading}>
+                  <span><CreditCard size={20} aria-hidden="true" /></span>
+                  <h2 id="checkout-payment-title">Payment method</h2>
                 </div>
                 <Image
                   src="/razorpay_logo.png"
@@ -2180,6 +2264,7 @@ function CheckoutPageInner() {
               <div className="flex gap-2 p-1 rounded-2xl bg-[#f0f5ef] border border-slate-200/50">
                 <button
                   type="button"
+                  aria-pressed={paymentMethod === "razorpay"}
                   onClick={() => setPaymentMethod("razorpay")}
                   className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                     paymentMethod === "razorpay" ? paymentTabActive : paymentTabIdle
@@ -2189,6 +2274,7 @@ function CheckoutPageInner() {
                 </button>
                 <button
                   type="button"
+                  aria-pressed={paymentMethod === "cod"}
                   onClick={() => setPaymentMethod("cod")}
                   className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ${
                     paymentMethod === "cod" ? paymentTabActive : paymentTabIdle
@@ -2204,8 +2290,7 @@ function CheckoutPageInner() {
                     You&apos;ll pay securely with Razorpay
                   </p>
                   <p className="text-xs text-slate-500 leading-relaxed">
-                    After you tap Pay securely, Razorpay opens so you can choose UPI, card, net
-                    banking, wallet, and other methods in their up-to-date payment window.
+                    Choose UPI, card, net banking or wallet in Razorpay after you select Pay securely.
                   </p>
                 </div>
               ) : (
@@ -2253,9 +2338,10 @@ function CheckoutPageInner() {
 
             {/* AFFILIATE CODE (customer-shared "?ref=") — independent of the
                 referral code section above. */}
-            <section className={`${checkoutCard} space-y-3`}>
+            <details className={checkoutCard} open={Boolean(affiliateError)}>
+              <summary className="min-h-11 cursor-pointer content-center font-semibold">Affiliate code{affiliateCodeApplied ? " · Applied" : ""}</summary>
               <div>
-                <h2 className="text-lg font-semibold text-[#2c342f]">Do you have an affiliate code?</h2>
+
                 <p className="text-xs text-slate-500 mt-1">
                   Got a code from a friend or a shared OWEG product link? Add it here so they get rewarded for the referral.
                 </p>
@@ -2308,15 +2394,11 @@ function CheckoutPageInner() {
                   ) : null}
                 </>
               )}
-            </section>
+            </details>
 
             {/* WALLET COINS SECTION */}
             {customer && (
-              <section className={checkoutCard}>
-                <h2 className="text-lg font-semibold text-[#2c342f] flex items-center gap-2">
-                  <img src="/uploads/coin/oweg_bag.png" alt="Wallet" className="w-8 h-8" />
-                  Wallet Coins
-                </h2>
+              <details className={checkoutCard}><summary className="min-h-11 cursor-pointer content-center font-semibold">Wallet coins{coinDiscount > 0 ? " · Applied" : ""}</summary>
                 {walletLoading ? (
                   <p className="text-sm text-slate-500">Loading wallet...</p>
                 ) : walletBalance > 0 ? (
@@ -2402,17 +2484,17 @@ function CheckoutPageInner() {
                     <p className="text-xs mt-1 flex items-center gap-1">Earn 2% coins on every purchase! <img src="/uploads/coin/oweg_bag.png" alt="coins" className="w-4 h-4 inline" /></p>
                   </div>
                 )}
-              </section>
+              </details>
             )}
               </>
             )}
           </div>
 
           <div className={styles.checkoutSummary}>
-            <section className={checkoutCard}>
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-[#2c342f]">Order summary</h2>
-                {loadingCart && <span className="text-xs text-slate-500">Loading…</span>}
+            <section id="checkout-review" tabIndex={-1} className={checkoutCard} aria-labelledby="checkout-review-title">
+              <div className={styles.checkoutSectionHeading}>
+                <span><ShoppingBag size={20} aria-hidden="true" /></span>
+                <h2 id="checkout-review-title">Order summary</h2>
               </div>
               <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/60 overflow-hidden bg-[#fafcf9]">
                 {cartItems.map((item) => (
@@ -2432,9 +2514,34 @@ function CheckoutPageInner() {
                     </div>
                   </div>
                 ))}
-                {!cartItems.length && (
-                  <div className="p-4 text-sm text-slate-500 text-center">No items in cart</div>
-                )}
+                {!isBuyNow && expiredCustomerId && !customerId ? (
+                  <p className="p-4 text-sm text-slate-600">Sign in again to see your cart.</p>
+                ) : !isBuyNow && !online ? (
+                  <p role="status" className="p-4 text-sm text-slate-600">Reconnect to check your cart and continue.</p>
+                ) : loadingCart ? (
+                  <div role="status" className="p-3.5 text-sm text-slate-600">
+                    {cartItems.length === 0 && (
+                      <div aria-hidden="true" className="mb-3 flex items-center gap-3 motion-safe:animate-pulse">
+                        <div className="size-14 shrink-0 rounded-xl bg-slate-200/70" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-3 w-3/4 rounded bg-slate-200/70" />
+                          <div className="h-3 w-1/3 rounded bg-slate-200/70" />
+                        </div>
+                        <div className="h-3 w-12 rounded bg-slate-200/70" />
+                      </div>
+                    )}
+                    {cartSlow ? "Your order summary is taking a little longer to load." : "Loading your order summary…"}
+                  </div>
+                ) : cartLoadError ? (
+                  <div className="p-4 text-sm text-slate-700">
+                    <p role="alert">We couldn’t load your cart.</p>
+                    <button type="button" onClick={() => setCartRetry(attempt => attempt + 1)} className="mt-2 min-h-11 font-semibold text-[#145448] underline">
+                      Try again
+                    </button>
+                  </div>
+                ) : !cartItems.length ? (
+                  <p className="p-4 text-sm text-slate-600">No items in cart</p>
+                ) : null}
               </div>
               {customer ? (
                 oweg10Status.canApply ? (
@@ -2464,13 +2571,14 @@ function CheckoutPageInner() {
                 </div>
               )}
               <div className="rounded-xl border border-slate-200/70 bg-white p-4 space-y-3">
-                <p className="text-sm font-semibold text-[#2c342f]">Promo code</p>
+                <details open={Boolean(promoError)}>
+                  <summary className="min-h-11 cursor-pointer content-center text-sm font-semibold text-[#2c342f]">Promo code{promoApplied ? " · Applied" : ""}</summary>
                 <div className="flex gap-2">
                   <input
                     value={promoCodeInput}
                     onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
                     aria-label="Promo code"
-                    className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     disabled={promoValidating}
                   />
                   {promoApplied ? (
@@ -2502,6 +2610,7 @@ function CheckoutPageInner() {
                 {promoError ? (
                   <p className="text-xs text-red-600">{promoError}</p>
                 ) : null}
+                </details>
               </div>
               <div className="space-y-2.5 text-sm text-slate-600">
                 <div className="flex justify-between">
@@ -2537,7 +2646,14 @@ function CheckoutPageInner() {
                   <span>Total</span>
                   <span className="text-lg">{formatInr(payableTotal)}</span>
                 </div>
-                {totalsLoading && <div className="text-xs text-slate-500">Refreshing totals...</div>}
+                {totalsLoading && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-600">Updating order totals…</p>
+                    <div className={styles.pendingTrack} role="progressbar" aria-label="Updating order totals">
+                      <span aria-hidden="true" />
+                    </div>
+                  </div>
+                )}
                 {totalWarning && (
                   <div className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-2.5">
                     {totalWarning}
@@ -2550,6 +2666,10 @@ function CheckoutPageInner() {
                   ? "Review before you place your order"
                   : "Review before you pay"}
               </p>
+              <div aria-live="polite" aria-atomic="true" className="hidden text-sm md:block">
+                {customer && formError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-rose-800">{formError}{reviewCart}</p>}
+                {checkoutSlow && <p className="text-slate-600">Checkout is taking longer than usual. Keep this page open.</p>}
+              </div>
               <Button
                 type={customer ? "submit" : "button"}
                 className={`hidden md:flex w-full py-3.5 text-base ${checkoutCta}`}
@@ -2558,17 +2678,23 @@ function CheckoutPageInner() {
                 loading={processing}
                 loadingText={payButtonLabel}
               >
-                {payButtonLabel}
+                {customer ? payButtonLabel : "Sign in to continue"}
               </Button>
             </section>
           </div>
         </form>
 
         <div className={styles.mobilePayBar}>
-          <div className="flex items-center justify-between gap-3 px-4 py-3.5">
-            <div className="min-w-0">
-              <p className="text-xs text-slate-500">Total payable</p>
-              <p className="text-lg font-bold text-[var(--oweg-green-dark)] truncate">{formatInr(payableTotal)}</p>
+          <div aria-live="polite" aria-atomic="true" className="px-4 text-xs">
+            {customer && formError && <p role="alert" className="rounded-lg bg-rose-50 p-2 text-rose-800">{formError}{reviewCart}</p>}
+            {checkoutSlow && <p className="pt-2 text-slate-600">Checkout is taking longer than usual.</p>}
+          </div>
+          <div className={styles.checkoutPayContent}>
+            <div className={styles.checkoutPayTotal}>
+              <a href="#checkout-review" aria-label="View order summary">
+                <span>Total payable <ArrowDown size={13} aria-hidden="true" /></span>
+                <strong>{formatInr(payableTotal)}</strong>
+              </a>
               {totalsLoading ? (
                 <p className="text-[11px] text-slate-400">Updating totals…</p>
               ) : null}
@@ -2576,7 +2702,7 @@ function CheckoutPageInner() {
             <Button
               type={customer ? "submit" : "button"}
               form={customer ? "checkout-form" : undefined}
-              className={`shrink-0 min-h-11 px-5 py-3 ${checkoutCta}`}
+              className={`${styles.checkoutMobileAction} ${checkoutCta}`}
               onClick={customer ? undefined : openCheckoutLogin}
               disabled={payDisabled}
               loading={processing}
@@ -2584,8 +2710,10 @@ function CheckoutPageInner() {
                 paymentMethod === "cod" ? "Placing order…" : "Processing…"
               }
             >
-              {processing
-                ? paymentMethod === "cod"
+              {!customer
+                ? "Sign in to continue"
+                : processing
+                  ? paymentMethod === "cod"
                   ? "Placing order…"
                   : "Processing…"
                 : paymentMethod === "cod"
@@ -2597,33 +2725,18 @@ function CheckoutPageInner() {
       </div>
       <CustomerLoginModal
         open={loginModalOpen}
-        onClose={() => {
-          setLoginModalOpen(false);
-          setCheckoutAfterLoginIntent(false);
-        }}
+        onClose={() => setLoginModalOpen(false)}
         signupRedirectPath={`/checkout${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`}
-        onSuccess={() => {
-          setLoginModalOpen(false);
-          if (checkoutAfterLoginIntent) {
-            setPendingLoginCheckout(true);
-          } else {
-            setPendingLoginCheckout(false);
-          }
-          setCheckoutAfterLoginIntent(false);
-        }}
+        onSuccess={() => setLoginModalOpen(false)}
       />
       {paymentReceivedOverlay ? (
         <div
           className="fixed inset-0 z-[2000] flex items-center justify-center bg-white/95 backdrop-blur-sm px-6"
-          role="status"
-          aria-live="polite"
         >
-          <div className="max-w-sm text-center space-y-3">
-            <div className="mx-auto h-12 w-12 rounded-full border-2 border-[var(--oweg-green)] border-t-transparent animate-spin" />
+          <div className="w-full max-w-sm text-center">
+            <BrandLoader compact label="Confirming your order…" />
             <p className="text-lg font-semibold text-[#2c342f]">Payment received</p>
-            <p className="text-sm text-slate-600">
-              Confirming your order — this only takes a moment.
-            </p>
+            <p className="mt-2 text-sm text-slate-600">Keep this page open while we verify your order.</p>
           </div>
         </div>
       ) : null}

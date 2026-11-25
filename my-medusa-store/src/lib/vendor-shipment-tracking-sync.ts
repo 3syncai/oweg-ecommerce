@@ -1,4 +1,5 @@
 import { enqueueNotification } from "../services/interakt/outbox"
+import { recordTrackingEmail } from "../services/order-email/outbox"
 import { itlNotificationEvent } from "../services/interakt/interakt.service"
 import type { MedusaRequest } from "@medusajs/framework/http"
 import { Modules } from "@medusajs/framework/utils"
@@ -173,6 +174,7 @@ export async function syncVendorShipmentTracking(input: {
     await enqueueItlTracking(container, order, workflow, peek)
     const peekStatus = normalizeTrackingStatus(peek?.status || "")
     if (peekStatus !== "cash_collected") {
+      await recordItlTrackingEmail(order, workflow, peek)
       return {
         updated: false,
         tracking: peek,
@@ -186,7 +188,13 @@ export async function syncVendorShipmentTracking(input: {
   await enqueueItlTracking(container, order, workflow, tracking)
   const status = normalizeTrackingStatus(tracking?.status || workflow.shiprocket_status || "")
   const ndrReason = normalizeNdrReason(tracking?.ndr_reason || workflow.ndr_reason)
-  const nextStage = stageFromTrackingStatus(status)
+  const isSelfShip = workflow.shipping_method === "self"
+  const rawNextStage = stageFromTrackingStatus(status)
+  // Self-ship: carrier/Track API/cron may update tracking display fields, but must
+  // NEVER advance the vendor stage to "delivered". Only vendor POST /delivered
+  // (or admin mark-delivered) can do that. Clamp to in_transit.
+  const nextStage: VendorOrderStage | null =
+    isSelfShip && rawNextStage === "delivered" ? "in_transit" : rawNextStage
   const isCod = getPaymentType(order as any) === "PostPaid"
 
   let metadata = order.metadata
@@ -254,13 +262,26 @@ export async function syncVendorShipmentTracking(input: {
   if (status === "cash_collected" && (workflow.stage === "delivered" || stage === "delivered")) {
     logistics.stage = "delivered"
   }
-  const { should_schedule_earnings, ...logisticsPatch } = logistics
+  const { should_schedule_earnings: rawScheduleEarnings, ...rawLogisticsPatch } = logistics
+  // Self-ship: strip delivered/COD-collected side effects from the carrier-driven patch
+  // and never schedule earnings from sync (earnings run on vendor/admin delivery).
+  let logisticsPatch: VendorOrderWorkflow = rawLogisticsPatch
+  if (isSelfShip) {
+    const {
+      stage: _dropStage,
+      shiprocket_delivered_at: _dropDeliveredAt,
+      cod_cash_collected_at: _dropCodCollectedAt,
+      ...selfSafePatch
+    } = rawLogisticsPatch
+    logisticsPatch = selfSafePatch
+  }
+  const should_schedule_earnings = isSelfShip ? false : rawScheduleEarnings
   const trackingStamp = {
     easy_tracking_status: status || null,
     easy_tracking_checked_at: new Date().toISOString(),
   }
 
-  if (nextStage === "delivered") {
+  if (nextStage === "delivered" && !isSelfShip) {
     const fulfillmentId = String(
       getVendorWorkflow(order.metadata, vendorId).medusa_fulfillment_id ||
         workflow.medusa_fulfillment_id ||
@@ -311,7 +332,7 @@ export async function syncVendorShipmentTracking(input: {
       ...trackingStamp,
     })
     updated = true
-    if (should_schedule_earnings || isCod) {
+    if (!isSelfShip && (should_schedule_earnings || isCod)) {
       try {
         const pool = getSharedDbPool()
         await scheduleVendorEarningsOnDelivery(order.id, pool, { vendorId })
@@ -361,6 +382,7 @@ export async function syncVendorShipmentTracking(input: {
     updated = true
   }
 
+  await recordItlTrackingEmail(order, workflow, tracking)
   return { updated, tracking, status, stage, metadata }
 }
 
@@ -421,13 +443,24 @@ export async function listOpenVendorShipmentsForSync(limit = 80): Promise<
   return targets
 }
 
-async function enqueueItlTracking(container: any, order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+function itlTrackingEvent(workflow: VendorOrderWorkflow, tracking: any) {
   const event = itlNotificationEvent(tracking?.notification_status)
   const staleShipped = event === "order_shipped" &&
     (workflow.stage === "delivered" || workflow.stage === "cancelled" ||
       ["delivered", "cash_collected", "cancelled", "rto_initiated", "rto_in_transit", "rto_delivered"].includes(String(workflow.shiprocket_status)))
   if (event && !staleShipped && !tracking?.error && tracking?.source === "itl" &&
       workflow.shipping_method === "easy" && getEasyShipProvider().name === "itl" && process.env.ITL_MODE === "live") {
-    await enqueueNotification(container, order.id, event, tracking.tracking_url)
+    return event
   }
+  return null
+}
+
+async function enqueueItlTracking(container: any, order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+  const event = itlTrackingEvent(workflow, tracking)
+  if (event) await enqueueNotification(container, order.id, event, tracking.tracking_url)
+}
+
+async function recordItlTrackingEmail(order: OrderLike, workflow: VendorOrderWorkflow, tracking: any) {
+  const event = itlTrackingEvent(workflow, tracking)
+  if (event) await recordTrackingEmail(order.id, event)
 }

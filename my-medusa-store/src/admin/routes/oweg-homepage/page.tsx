@@ -11,11 +11,17 @@ const OwegHomepagePage = () => {
         <div className="flex flex-col gap-y-2">
           <Heading level="h1">Oweg.in Homepage</Heading>
           <Text size="small" className="text-ui-fg-subtle">
-            Manage storefront homepage content — featured brands and mega menu category banners.
+            Manage storefront homepage content and navigation.
           </Text>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
+          <Link to="/oweg-homepage/mobile-shop-menu" className="rounded-lg border border-ui-border-base p-4 transition-colors hover:bg-ui-bg-subtle-hover">
+            <Heading level="h2">Mobile Shopping Menu</Heading>
+            <Text size="small" className="mt-2 text-ui-fg-subtle">
+              Manage the links in the mobile hamburger menu.
+            </Text>
+          </Link>
           <Link
             to="/oweg-homepage/brands"
             className="rounded-lg border border-ui-border-base p-4 transition-colors hover:bg-ui-bg-subtle-hover"

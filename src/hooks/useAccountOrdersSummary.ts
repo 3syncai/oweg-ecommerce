@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
+import type { OrderItem } from "@/lib/order-types";
 
 export type AccountOrder = {
   id: string;
@@ -14,13 +15,7 @@ export type AccountOrder = {
   payment_status?: string;
   fulfillment_status?: string;
   metadata?: Record<string, unknown>;
-  items?: Array<{
-    id: string;
-    title?: string;
-    quantity?: number;
-    thumbnail?: string;
-    variant_id?: string;
-  }>;
+  items?: OrderItem[];
 };
 
 export type AccountOrderCounts = {
@@ -209,6 +204,7 @@ export function useAccountOrdersSummary(options?: {
     counts,
     totalSpent,
     loading: ordersQuery.isLoading,
+    refreshing: ordersQuery.isRefetching,
     error: ordersQuery.error instanceof Error ? ordersQuery.error.message : null,
     refresh: ordersQuery.refetch,
   };

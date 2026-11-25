@@ -20,6 +20,7 @@ import {
 export type ProductCardQuickActionsProps = {
   variantId?: string;
   selectionHref?: string;
+  expectedFlashPrice?: number;
   productName: string;
   disabled?: boolean;
   isHovered: boolean;
@@ -37,6 +38,7 @@ function stopCardNavigation(event: React.MouseEvent<HTMLButtonElement>) {
 export function ProductCardQuickActions({
   variantId,
   selectionHref,
+  expectedFlashPrice,
   productName,
   disabled = false,
   isHovered,
@@ -73,7 +75,7 @@ export function ProductCardQuickActions({
     stopCardNavigation(event);
     if (!variantId || selectionHref || disabled || isBusy) return;
     try {
-      await addToCart(variantId, captureCartFlight(event.currentTarget.closest("article")));
+      await addToCart(variantId, captureCartFlight(event.currentTarget.closest("article")), expectedFlashPrice);
       setShowAddedFlash(true);
     } catch { /* The add hook already reports the error; keep the card usable. */ }
   };
@@ -81,6 +83,11 @@ export function ProductCardQuickActions({
   const handleIncrement = async (event: React.MouseEvent<HTMLButtonElement>) => {
     stopCardNavigation(event);
     if (!line?.lineId || isBusy || atMaxQty) return;
+    if (expectedFlashPrice !== undefined && variantId) {
+      try { await addToCart(variantId, captureCartFlight(event.currentTarget.closest("article")), expectedFlashPrice); }
+      catch { /* The add hook reports changed offers and insufficient stock. */ }
+      return;
+    }
     try { await updateQuantity(line.lineId, quantity + 1, productName); }
     catch (error) { notifyActionError("Unable to update quantity", error instanceof Error ? error.message : "Please try again."); }
   };

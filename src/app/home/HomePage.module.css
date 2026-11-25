@@ -85,13 +85,13 @@
 .secondaryLink:hover { background: #edf2e9; }
 .home :is(a, button, input):focus-visible { outline: 2px solid #5b8b35; outline-offset: 4px; }
 
-.hero { border: 0; border-radius: 0; background: #eef3e9; }
+.hero { border: 0; border-radius: 0; background: #eef3e9; overflow: hidden; }
 .heroStage { aspect-ratio: 1920 / 360; }
 .heroArrow { position: absolute; top: 50%; z-index: 20; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; transform: translateY(-50%); border-radius: 50%; background: #163d32a6; color: #fff; }
 .heroArrow:hover { background: #163d32dc; }
 .heroPrevious { left: 12px; }
 .heroNext { right: 12px; }
-.heroDots { position: absolute; bottom: 0; left: 50%; z-index: 20; display: flex; align-items: center; transform: translateX(-50%); }
+.heroDots { position: absolute; bottom: 6px; left: 50%; z-index: 20; display: flex; align-items: center; transform: translateX(-50%); }
 .heroDots button > span { box-shadow: 0 0 0 1px #173d3240, 0 1px 4px #ffffff70; }
 .pauseButton { position: absolute; top: 8px; right: 8px; z-index: 20; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 50%; background: #ffffffd9; color: #214f3d; }
 .pauseButton:hover { background: #fff; }
@@ -128,6 +128,8 @@
 
 
 @media (max-width: 767px) {
+  /* Keep full mobile artwork visible; room at bottom so dots/arrows are not clipped. */
+  .hero { padding-bottom: 10px; }
   .heroStage { aspect-ratio: 800 / 400; }
   .desktopBanners { display: none; }
   .content { padding-bottom: 0; }
@@ -135,9 +137,10 @@
   /* The footer already provides clearance for the fixed mobile navigation. */
   :global(main):has(> .home) { padding-bottom: 0; }
   .heroArrow { width: 36px; height: 36px; }
-  .heroPrevious { left: 4px; }
-  .heroNext { right: 4px; }
-  .pauseButton { top: 2px; right: 2px; width: 32px; height: 32px; }
+  .heroPrevious { left: 8px; }
+  .heroNext { right: 8px; }
+  .heroDots { bottom: 2px; }
+  .pauseButton { top: 8px; right: 8px; width: 32px; height: 32px; }
   .home :global(.oweg-rail-item) { width: clamp(160px, 43vw, 252px); }
 }
 
@@ -176,6 +179,7 @@
 @media (prefers-reduced-motion: reduce) { .discoverySkeleton { animation: none; } }
 .discoveryActions { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 26px 0 6px; text-align: center; }
 .discoveryActions button:disabled { opacity: .65; cursor: wait; }
+.discoveryStatus { display: grid; min-height: 20px; place-items: center; }
 /* Appending a batch must not pin the viewport to the footer and fetch every page. */
 :global(body):has(.home) { overflow-anchor: none; }
 @media (min-width: 640px) { .discoveryGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }

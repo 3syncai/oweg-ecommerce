@@ -136,6 +136,10 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: getSecurityHeaders(),
       },
+      {
+        source: "/images/mobile-categories/v1/:filename",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
     ];
   },
   experimental: {

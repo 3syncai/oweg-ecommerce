@@ -16,14 +16,20 @@ const productionAppId =
   process.env.OWEG_IOS_BUNDLE_ID ||
   "in.oweg.store";
 
+/** Optional LAN URL for USB device testing, e.g. OWEG_CAP_SERVER_URL=http://192.168.0.105:3000 */
+const overrideUrl = process.env.OWEG_CAP_SERVER_URL?.trim();
+const defaultUrl = isPreview ? "https://www.0weg.in" : "https://oweg.in";
+const serverUrl = overrideUrl || defaultUrl;
+const cleartext = serverUrl.startsWith("http://");
+
 const config = {
   appId: isPreview ? previewAppId : productionAppId,
   appName: "Oweg Online Shopping App",
   webDir: "www",
   server: {
     // Match the final storefront origin so Capacitor injects the native bridge.
-    url: isPreview ? "https://www.0weg.in" : "https://oweg.in",
-    cleartext: false,
+    url: serverUrl,
+    cleartext,
     allowNavigation: [
       "0weg.in",
       "www.0weg.in",
@@ -34,18 +40,22 @@ const config = {
       "api.razorpay.com",
       "checkout.razorpay.com",
       "lumberjack.razorpay.com",
+      "192.168.0.105",
+      "localhost",
+      "127.0.0.1",
     ],
   },
   plugins: {
     SplashScreen: {
       launchShowDuration: 0,
       launchAutoHide: false,
-      backgroundColor: "#fafbf7",
+      backgroundColor: "#ffffff",
       showSpinner: false,
     },
     StatusBar: {
       style: "LIGHT",
-      backgroundColor: "#fafbf7",
+      backgroundColor: "#ffffff",
+      overlaysWebView: true,
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
@@ -54,11 +64,11 @@ const config = {
   android: {
     adjustMarginsForEdgeToEdge: "auto",
     allowMixedContent: false,
-    backgroundColor: "#fafbf7",
+    backgroundColor: "#ffffff",
   },
   ios: {
-    contentInset: "automatic",
-    backgroundColor: "#fafbf7",
+    contentInset: "never",
+    backgroundColor: "#ffffff",
     scheme: isPreview ? "owegpreview" : "oweg",
     preferredContentMode: "mobile",
   },

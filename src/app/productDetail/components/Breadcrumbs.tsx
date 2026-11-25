@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import Link from 'next/link'
+import { CategoryLink } from '@/components/modules/CategoryNavigation'
 import { ChevronRight } from 'lucide-react'
 import type { BreadcrumbItem } from '../types'
 import styles from '../ProductDetail.module.css'
@@ -19,9 +19,9 @@ const Breadcrumbs = ({ items, pillClassName }: BreadcrumbsProps) => (
         {idx === items.length - 1 ? (
           <span className={styles.breadcrumbCurrent} title={item.label} aria-current="page">{item.label}</span>
         ) : item.href ? (
-          <Link href={item.href} className={pillClassName}>
+          <CategoryLink href={item.href} className={pillClassName}>
             {item.label}
-          </Link>
+          </CategoryLink>
         ) : (
           <span className={pillClassName}>{item.label}</span>
         )}
