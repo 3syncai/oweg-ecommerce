@@ -23,7 +23,7 @@ const serverUrl = overrideUrl || defaultUrl;
 
 const config: CapacitorConfig = {
   appId: isPreview ? previewAppId : productionAppId,
-  appName: isPreview ? "OWEG Preview" : "OWEG",
+  appName: "Oweg Online Shopping App",
   webDir: "www",
   server: {
     // Remote storefront — UI is the website by design (Capacitor wrap).

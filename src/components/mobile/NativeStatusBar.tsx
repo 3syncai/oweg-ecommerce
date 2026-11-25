@@ -30,6 +30,25 @@ function readCssSafeAreaTop(): number {
   return px;
 }
 
+/**
+ * Android major version. Prefers UA client hints (survives UA reduction),
+ * falls back to the user-agent string.
+ */
+async function androidMajorVersion(): Promise<number> {
+  try {
+    const uaData = (navigator as Navigator & {
+      userAgentData?: { getHighEntropyValues?: (hints: string[]) => Promise<{ platformVersion?: string }> };
+    }).userAgentData;
+    const version = (await uaData?.getHighEntropyValues?.(["platformVersion"]))?.platformVersion;
+    const major = Number.parseInt(version || "", 10);
+    if (Number.isFinite(major) && major > 0) return major;
+  } catch {
+    /* fall through to the user-agent string */
+  }
+  const match = /Android\s+(\d+)/i.exec(navigator.userAgent || "");
+  return match ? Number(match[1]) : 0;
+}
+
 function applySafeAreaCssVar(px: number) {
   const value = `${Math.max(0, Math.round(px))}px`;
   document.documentElement.style.setProperty("--oweg-sat", value);
@@ -64,7 +83,14 @@ export default function NativeStatusBar() {
 
         const info = await statusBar.getInfo?.();
         const cssInset = readCssSafeAreaTop();
-        const nativeHeight = typeof info?.height === "number" ? info.height : 0;
+        // Android 15+ (edge-to-edge enforced): Capacitor's native handler
+        // (android.adjustMarginsForEdgeToEdge) already pushes the WebView below the
+        // status bar. Adding the status-bar height again as header padding left a
+        // large white gap above the logo, so only trust the CSS inset there.
+        const nativeInsetHandled =
+          nativePlatform() === "android" && (await androidMajorVersion()) >= 15;
+        const nativeHeight =
+          !nativeInsetHandled && typeof info?.height === "number" ? info.height : 0;
         // Prefer the larger of CSS env vs native status-bar height so the
         // OWEG brand row clears the Dynamic Island / notch on Capacitor.
         applySafeAreaCssVar(Math.max(cssInset, nativeHeight));
