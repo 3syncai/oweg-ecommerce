@@ -158,17 +158,26 @@ export async function POST(req: NextRequest) {
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY_PER_ITEM) {
       return NextResponse.json({ error: `Maximum ${MAX_QUANTITY_PER_ITEM} units per item` }, { status: 400 })
     }
-    const selectedVariantId = body.seller_selected === true ? variant_id : await cheapestAvailableVariant(variant_id, quantity)
-    const offersRes = await backend(`/store/catalog-offers?variant_id=${encodeURIComponent(selectedVariantId)}`)
+    const selectedVariantId = (body.seller_selected === true || body.expected_flash_price !== undefined) ? variant_id : await cheapestAvailableVariant(variant_id, quantity)
+    const offerQuery = new URLSearchParams({ variant_id: selectedVariantId })
+    if (body.expected_flash_price !== undefined) {
+      offerQuery.set("deals", "1")
+      offerQuery.set("quantity", String(quantity))
+      offerQuery.set("pincode", String(body.delivery_pincode ?? ""))
+    }
+    const offersRes = await backend(`/store/catalog-offers?${offerQuery}`)
     if (!offersRes.ok) {
       return NextResponse.json({ error: "Unable to verify seller stock. Please try again." }, { status: 503 })
     }
-    const offers = await offersRes.json() as { offers?: Array<{ variant_id?: string; available?: number }> }
+    const offers = await offersRes.json() as { offers?: Array<{ variant_id?: string; available?: number; flash_sale?: { flash_sale_price: number } }> }
     const selectedOffer = offers.offers?.find(offer => offer.variant_id === selectedVariantId)
     if (!selectedOffer || !Number.isFinite(Number(selectedOffer.available)) || Number(selectedOffer.available) < quantity) {
       return NextResponse.json({ error: "This item is out of stock or has insufficient stock from this seller" }, { status: 409 })
     }
-    const itemBody = { variant_id: selectedVariantId, quantity, ...(body.seller_selected === true ? { metadata: { seller_selected: true } } : {}) }
+    if (body.expected_flash_price !== undefined && selectedOffer.flash_sale?.flash_sale_price !== body.expected_flash_price) {
+      return NextResponse.json({ error: "This deal has changed. Open the product to review current seller prices." }, { status: 409 })
+    }
+    const itemBody = { variant_id: selectedVariantId, quantity, ...((body.seller_selected === true || body.expected_flash_price !== undefined) ? { metadata: { seller_selected: true } } : {}) }
     let { cartId } = await ensureCartId(req)
     let existingQuantity = 0
     const existingCartRes = await backend(`/store/carts/${encodeURIComponent(cartId)}`)
@@ -186,6 +195,15 @@ export async function POST(req: NextRequest) {
     }
     if (Number(selectedOffer.available) < existingQuantity + quantity) {
       return NextResponse.json({ error: `Only ${selectedOffer.available} units are available from this seller` }, { status: 409 })
+    }
+    if (body.expected_flash_price !== undefined && existingQuantity > 0) {
+      offerQuery.set("quantity", String(existingQuantity + quantity))
+      const response = await backend(`/store/catalog-offers?${offerQuery}`)
+      if (!response.ok) return NextResponse.json({ error: "Unable to verify the deal for this quantity." }, { status: 503 })
+      const { offers } = await response.json() as { offers: Array<{ variant_id: string; flash_sale?: {flash_sale_price: number} }> }
+      if (!offers.some(offer => offer.variant_id === selectedVariantId && offer.flash_sale?.flash_sale_price === body.expected_flash_price)) {
+        return NextResponse.json({ error: "This quantity no longer qualifies. Review the current seller offer." }, { status: 409 })
+      }
     }
     let res = await addLineItemRequest(cartId, itemBody)
     let attempts = 0
@@ -212,7 +230,7 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json()
     
-    const pricedData = await priceCartPayload(data)
+    const pricedData = await priceCartPayload(data, body.expected_flash_price !== undefined)
 
     // Always persist cart identity after a successful add. Previously we only set
     // the cookie when one already existed, so logged-in users (and cleared-cookie

@@ -1,5 +1,5 @@
 {
-  "ranAt": "2026-10-17T12:40:46.946Z",
+  "ranAt": "2026-11-23T13:03:54.335Z",
   "scope": "isolated PostgreSQL schema; no real customer records or payouts changed",
   "results": [
     {
@@ -96,6 +96,14 @@
     },
     {
       "name": "inventory write fault rolls back reservation and level together",
+      "result": "PASS"
+    },
+    {
+      "name": "a shortage in one bundle component rolls back the whole reservation",
+      "result": "PASS"
+    },
+    {
+      "name": "last unit: two COD buyers, mixed payment competition, idempotent retry and abandoned online hold",
       "result": "PASS"
     },
     {

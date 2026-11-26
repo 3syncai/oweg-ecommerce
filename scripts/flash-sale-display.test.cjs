@@ -25,21 +25,20 @@ function load(file, mocks = {}, clock = Date) {
 }
 const display = load('src/lib/flash-sale-display.ts')
 
-test('deal display selects the cheapest stocked size and keeps that size MRP paired', () => {
-  const {lowestFlashSalePricing} = load('src/lib/home-flash-sale.ts', {'./medusa':{}})
-  const variants = [{id:'large',price:1500,mrp:2200,inventory_quantity:2},
-    {id:'small',price:1090,mrp:1800,inventory_quantity:4},
-    {id:'empty',price:10,mrp:3000,inventory_quantity:0}]
-  const quote = lowestFlashSalePricing(variants,'large',1400)
-  assert.equal(quote.variant_id,'small')
-  assert.equal(quote.price,1090)
-  assert.equal(quote.mrp,1800)
-  assert.equal(quote.from,true)
-  const sale = lowestFlashSalePricing(variants,'large','900.00')
-  assert.equal(sale.price,900)
-  assert.equal(sale.mrp,2200)
-  assert.equal(variants[0].price,1500)
-  assert.equal(lowestFlashSalePricing([variants[2]],'empty',5),undefined)
+test('seller flash price must improve regular price and beat or match stocked comparable offers', () => {
+  const {evaluateFlashOffer} = load('my-medusa-store/src/lib/flash-sale-eligibility.ts', {'./vendor-offer-routing':{},'./storefront-shipping':load('my-medusa-store/src/lib/storefront-shipping.ts')})
+  const mumbai = {variant_id:'m',product_id:'pm',store_name:'Mumbai',prices:[851],available:20}
+  const bihar = {variant_id:'b',product_id:'pb',store_name:'Bihar',prices:[750],available:2}
+  const sale = {product_id:'pm',variant_id:'m',original_price:851,flash_sale_price:851}
+  const assess = (price, quantity=1) => evaluateFlashOffer({...sale,flash_sale_price:price},[mumbai,bihar],quantity)
+  assert.match(assess(851).reason,/regular price.*Bihar/)
+  assert.match(assess(800).reason,/Bihar/)
+  assert.equal(assess(800,3).reason,'')
+  assert.match(evaluateFlashOffer({...sale,flash_sale_price:990,original_price:1020},[{...mumbai,prices:[1020]}]).reason,/shipping/)
+  assert.equal(assess(750).reason,'')
+  assert.equal(assess(729).reason,'')
+  assert.match(assess(729,21).reason,/unavailable/)
+  assert.match(evaluateFlashOffer({...sale,product_id:'pb'},[mumbai,bihar]).reason,/unavailable/)
 })
 test('countdown splits 24+ hours into days and never shows invalid or negative numbers', () => {
   for (const [ms, expected] of [[(49*3600+125)*1000, [2,1,2,5]], [86400000,[1,0,0,0]], [86399000,[0,23,59,59]], [0,[0,0,0,0]],[-1,[0,0,0,0]],[NaN,[0,0,0,0]]]) {
@@ -128,11 +127,13 @@ test('migration adds an optional field without rewriting or deleting existing sa
 test('admin save forwards its validated title without changing prices or variants', async () => {
   let saved
   const route=load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
+    '../../../lib/simple-rate-limit':{checkRateLimit:()=>({allowed:true})},
     '@medusajs/framework/utils':{Modules:{PRODUCT:'product'}},pg:{Client:class{}},
     '../../../modules/flash-sale/service':{},'../../../modules/flash-sale':{FLASH_SALE_MODULE:'flash'},
     '../../../lib/flash-sale-title':titleRules,
+    '../../../lib/flash-sale-eligibility':{assessFlashSales: async items=>items.map(item=>({...item,regular:100,reason:''}))},
   })
-  const service={createFlashSaleItemsBatch:async items=>{saved=items;return items}}
+  const service={getAllFlashSaleItems:async()=>[],createFlashSaleItemsBatch:async items=>{saved=items;return items}}
   const res={code:200,status(code){this.code=code;return this},json(value){return {status:this.code,...value}}}
   const item={product_id:'p',variant_id:'v',flash_sale_price:90,original_price:100,expires_at:'2099-01-01'}
   const result=await route.POST({body:{title:' Weekend deals ',items:[item]},scope:{resolve:name=>name==='flash'?service:{}}},res)
@@ -144,6 +145,32 @@ test('admin save forwards its validated title without changing prices or variant
   const invalid=await route.POST({body:{title:'x'.repeat(121),items:[item]},scope:{resolve:()=>service}},res)
   assert.equal(invalid.status,400)
   assert.equal(saved,undefined)
+})
+test('publication validates the complete batch against seller prices before saving', async () => {
+  const groups = new Map([['m',[
+    {product_id:'pm',variant_id:'m',prices:[851],available:20,store_name:'Mumbai'},
+    {product_id:'pb',variant_id:'b',prices:[750],available:2,store_name:'Bihar'}
+  ]]])
+  const rules = load('my-medusa-store/src/lib/flash-sale-eligibility.ts',{
+    './vendor-offer-routing':{offersByVariant:async()=>groups}, './storefront-shipping':load('my-medusa-store/src/lib/storefront-shipping.ts')
+  })
+  let saved
+  const service = {getAllFlashSaleItems:async()=>[],createFlashSaleItemsBatch:async items=>{saved=items;return items}}
+  const route = load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
+    '../../../lib/simple-rate-limit':{checkRateLimit:()=>({allowed:true})},
+    '@medusajs/framework/utils':{Modules:{}},'../../../modules/flash-sale':{FLASH_SALE_MODULE:'flash'},
+    '../../../lib/flash-sale-title':titleRules,'../../../lib/flash-sale-eligibility':rules,
+  })
+  const res={code:200,status(code){this.code=code;return this},json(payload){return {status:this.code,...payload}}}
+  const offer=price=>({product_id:'pm',variant_id:'m',original_price:1692,flash_sale_price:price,expires_at:'2099-01-01'})
+  const publish=items=>route.POST({body:{items},scope:{resolve:()=>service}},res)
+  assert.match((await publish([offer(729),offer(851)])).message,/Bihar/)
+  assert.equal(saved,undefined)
+  await publish([offer(729)])
+  assert.equal(saved[0].original_price,851)
+  assert.equal(saved[0].flash_sale_price,729)
+  groups.get('m')[0].recent_regular=720
+  assert.match((await publish([offer(729)])).message,/regular price/)
 })
 test('all-deals API uses an independent cache and requests the complete upstream catalogue', async () => {
   const calls=[],filters=[]
@@ -169,6 +196,7 @@ test('full store response includes the saved heading and all published deals acr
   const batches=[]
   const route=load('my-medusa-store/src/api/store/flash-sale/products/route.ts',{
     '@medusajs/framework/utils':{Modules:{PRODUCT:'product'}},
+    '../../../../lib/flash-sale-eligibility':{assessFlashSales: async items=>items.map(item=>({...item,regular:100,reason:''}))},
     '../../../../modules/flash-sale/service':{},'../../../../modules/flash-sale':{FLASH_SALE_MODULE:'flash'},
   })
   const service={getAllFlashSaleItems:async()=>items}
@@ -211,3 +239,23 @@ test('CDN freshness cannot outlast the featured window or sale expiry', () => {
   assert.equal(flashSaleCacheSeconds({ ...payload, flash_sale: null }, 44_000), 1)
   assert.equal(currentFlashSale(payload, 43_000).products.length, 0)
 })
+
+test('batch publish returns every invalid row and writes only after all are corrected', async () => {
+  let allowed=true;
+  const route = load('my-medusa-store/src/api/admin/flash-sale/route.ts',{
+    '@medusajs/framework/utils':{}, '../../../modules/flash-sale':{}, '../../../lib/simple-rate-limit':{checkRateLimit:()=>({allowed,retryAfterSec:5})},
+    '../../../lib/flash-sale-title':{normalizeFlashSaleTitle:()=>null},
+    '../../../lib/flash-sale-eligibility':{assessFlashSales:async rows=>rows.map(row=>({...row,
+      regular:100, seller:row.variant_id, reason:row.flash_sale_price>=100?'Reduce the price.':''}))}
+  });
+  let writes=0;
+  const service={getAllFlashSaleItems:async()=>[],createFlashSaleItemsBatch:async rows=>{writes++;return rows}};
+  const items=[99,105,100].map((price,i)=>({variant_id:'v'+i,product_id:'p'+i,flash_sale_price:price,expires_at:'2099-01-01'}));
+  const req={auth_context:{actor_id:"admin"},body:{items},scope:{resolve:()=>service}};
+  const res={set(k,v){this[k]=v;return this},status(n){this.code=n;return this},json(body){return body}};
+  const rejected=await route.POST(req,res);
+  assert.equal(res.code,400);assert.equal(writes,0);assert.deepEqual(Array.from(rejected.issues,i=>i.variant_id),['v1','v2']);
+  items[1].flash_sale_price=90;items[2].flash_sale_price=80;
+  assert.equal((await route.POST(req,res)).flash_sale_items.length,3);assert.equal(writes,1);
+  allowed=false;await route.POST(req,res);assert.equal(res.code,429);assert.equal(res["Retry-After"],"5");assert.equal(writes,1);
+});

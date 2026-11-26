@@ -1,4 +1,6 @@
+import { randomUUID } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
+import { portalActivityHeaders } from "@/lib/activity-ip"
 import { getMedusaBackendUrl } from "@/lib/medusa-proxy"
 import { checkRateLimit, clientIpFromRequest } from "@/lib/simple-rate-limit"
 import { sealVendorSession, unsealVendorSession } from "@/lib/api/token"
@@ -21,7 +23,13 @@ function cookieOptions(maxAgeSeconds: number) {
   }
 }
 
+// Public change marker only. Credentials stay in the HttpOnly session cookie.
+function markSessionChange(res: NextResponse) {
+  res.cookies.set("vendor_session_version", randomUUID(), { ...cookieOptions(7 * 86400), httpOnly: false })
+}
+
 function clearCookie(res: NextResponse) {
+  markSessionChange(res)
   res.cookies.set(COOKIE, "", { ...cookieOptions(0), maxAge: 0 })
 }
 
@@ -68,6 +76,7 @@ export async function POST(req: NextRequest) {
   const upstream = await fetch(`${backend}/vendor/auth/login`, {
     method: "POST",
     headers: {
+      ...portalActivityHeaders(req.headers),
       "Content-Type": "application/json",
       ...(publishableKey ? { "x-publishable-api-key": publishableKey } : {}),
     },
@@ -106,6 +115,7 @@ export async function POST(req: NextRequest) {
     sealed,
     cookieOptions(keepSignedIn ? 60 * 60 * 24 * 7 : 60 * 60 * 12)
   )
+  markSessionChange(res)
   return res
 }
 

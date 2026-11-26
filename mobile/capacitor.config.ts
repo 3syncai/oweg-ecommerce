@@ -17,16 +17,21 @@ const productionAppId =
   process.env.OWEG_IOS_BUNDLE_ID ||
   "in.oweg.store";
 
+const overrideUrl = process.env.OWEG_CAP_SERVER_URL?.trim();
+const defaultUrl = isPreview ? "https://www.0weg.in" : "https://oweg.in";
+const serverUrl = overrideUrl || defaultUrl;
+
 const config: CapacitorConfig = {
   appId: isPreview ? previewAppId : productionAppId,
-  appName: isPreview ? "OWEG Preview" : "OWEG",
+  appName: "Oweg Online Shopping App",
   webDir: "www",
   server: {
     // Remote storefront — UI is the website by design (Capacitor wrap).
     // Keep shop + Razorpay inside the WebView; do not open Safari for these hosts.
     // Use the final origin: redirecting to www loses Android's origin-scoped bridge injection.
-    url: isPreview ? "https://www.0weg.in" : "https://oweg.in",
-    cleartext: false,
+    // OWEG_CAP_SERVER_URL overrides for USB LAN testing (e.g. http://192.168.0.105:3000).
+    url: serverUrl,
+    cleartext: serverUrl.startsWith("http://"),
     allowNavigation: [
       "0weg.in",
       "www.0weg.in",
@@ -37,6 +42,9 @@ const config: CapacitorConfig = {
       "api.razorpay.com",
       "checkout.razorpay.com",
       "lumberjack.razorpay.com",
+      "192.168.0.105",
+      "localhost",
+      "127.0.0.1",
     ],
   },
   plugins: {
@@ -48,12 +56,12 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     StatusBar: {
-      // Do not draw WebView under the clock / Dynamic Island / notch.
-      // iOS/Android apply the real per-device inset (not a fixed padding hack).
-      overlaysWebView: false,
-      // Dark icons for light chrome (Style.Light in Capacitor = dark text).
+      // Draw the WebView under the status bar; CSS safe-area pads the header.
+      // contentInset "automatic" + CSS padding caused the white gap on iPhone.
+      // LIGHT = dark status icons (time/battery) on the white OWEG header.
       style: "LIGHT",
       backgroundColor: "#ffffff",
+      overlaysWebView: true,
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],
@@ -66,8 +74,9 @@ const config: CapacitorConfig = {
     backgroundColor: "#fafbf7",
   },
   ios: {
-    contentInset: "automatic",
-    backgroundColor: "#fafbf7",
+    // Edge-to-edge WebView — never add a system content inset above the page.
+    contentInset: "never",
+    backgroundColor: "#ffffff",
     // Must be a valid URL scheme token (no spaces). Display name is appName, not scheme.
     scheme: isPreview ? "owegpreview" : "oweg",
     preferredContentMode: "mobile",

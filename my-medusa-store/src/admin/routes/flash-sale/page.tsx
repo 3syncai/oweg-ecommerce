@@ -24,6 +24,8 @@ type FlashSaleItem = {
   is_active: boolean
   // is_active AND product is currently published. This mirrors the
   // storefront visibility rule so admins see exactly what customers see.
+  hidden_reason?: string
+  seller?: string
   is_live?: boolean
   time_remaining_ms: number
 }
@@ -33,7 +35,10 @@ type Product = {
   title: string
   thumbnail?: string | null
   price: number
-  variant_id?: string
+  variant_id: string
+  seller: string
+  sku: string
+  best: number
 }
 
 type Category = {
@@ -51,8 +56,21 @@ type ProductType = {
   value: string
 }
 
+function priceIssue(price: number, regular: number, best: number) {
+  if (!(price > 0 && price < regular)) return `Enter a deal price below ₹${regular}.`
+  if (price > best) return `Match or beat the available ₹${best} offer.`
+  return ""
+}
+
 const FlashSalePage = () => {
   const [loading, setLoading] = useState(true)
+  const [saveError, setSaveError] = useState("")
+  const [rowErrors, setRowErrors] = useState<Record<string,string>>({})
+  const clearRowError = (id: string) => setRowErrors(current => {
+    const next = { ...current }
+    delete next[id]
+    return next
+  })
   const [saving, setSaving] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
   const [productsCount, setProductsCount] = useState(0)
@@ -73,7 +91,7 @@ const FlashSalePage = () => {
     enabled: true,
     start_time: "",
     end_time: "",
-    selectedProducts: new Map<string, { price: number; originalPrice: number }>(),
+    selectedProducts: new Map<string, { price: number; originalPrice: number; best: number; productId: string }>(),
   })
 
   // UI state: which subset of the active-flash-sales list to show + the bulk
@@ -199,12 +217,15 @@ const FlashSalePage = () => {
 
 
   const handleProductToggle = (product: Product) => {
+    clearRowError(product.variant_id)
     const newSelected = new Map(formData.selectedProducts)
     
-    if (newSelected.has(product.id)) {
-      newSelected.delete(product.id)
+    if (newSelected.has(product.variant_id)) {
+      newSelected.delete(product.variant_id)
     } else {
-      newSelected.set(product.id, {
+      newSelected.set(product.variant_id, {
+        productId: product.id,
+        best: product.best,
         price: product.price, // Flash sale price (starts same as original)
         originalPrice: product.price, // Original price from product
       })
@@ -214,6 +235,7 @@ const FlashSalePage = () => {
   }
 
   const handlePriceChange = (productId: string, price: number) => {
+    clearRowError(productId)
     const newSelected = new Map(formData.selectedProducts)
     const existing = newSelected.get(productId)
     if (existing) {
@@ -229,28 +251,29 @@ const FlashSalePage = () => {
     e.preventDefault()
     
     if (formData.selectedProducts.size === 0) {
-      alert("Please select at least one product")
+      setSaveError("Please select at least one product")
       return
     }
     
     if (!formData.end_time) {
-      alert("Please set an end time for the flash sale")
+      setSaveError("Please set an end time for the flash sale")
       return
     }
     
+    if (saving) return
+    setSaveError("")
+    setRowErrors({})
     setSaving(true)
     
     try {
       const backend = getAdminBackendUrl()
       
       // Create items with variant_id, flash_sale_price, original_price, and expires_at
-      const items = Array.from(formData.selectedProducts.entries()).map(([productId, data]) => {
-        // Find the product to get variant_id
-        const product = products.find(p => p.id === productId)
+      const items = Array.from(formData.selectedProducts.entries()).map(([variantId, data]) => {
         
         return {
-          product_id: productId,
-          variant_id: product?.variant_id || null, // Will be fetched server-side if not provided
+          product_id: data.productId,
+          variant_id: variantId,
           flash_sale_price: data.price,
           original_price: data.originalPrice,
           expires_at: new Date(formData.end_time).toISOString(),
@@ -277,11 +300,17 @@ const FlashSalePage = () => {
         alert("Flash sale saved successfully!")
       } else {
         const error = await response.json()
-        alert(`Error: ${error.message || "Failed to save flash sale"}`)
+        if (Array.isArray(error.issues) && error.issues.length) {
+          const messages: Record<string,string> = {}
+          for (const issue of error.issues) {
+            messages[issue.variant_id] = `${issue.seller || issue.variant_id} · ₹${issue.price}: ${issue.reason}`
+          }
+          setRowErrors(messages)
+        } else setSaveError(error.message || "Failed to save flash sale")
       }
     } catch (error) {
       console.error("Failed to save flash sale:", error)
-      alert("Failed to save flash sale")
+      setSaveError("Failed to save flash sale. Your selections are still here.")
     } finally {
       setSaving(false)
     }
@@ -310,6 +339,8 @@ const FlashSalePage = () => {
   }
 
   const resetForm = () => {
+    setSaveError("")
+    setRowErrors({})
     setFormData({
       title: "",
       enabled: true,
@@ -353,13 +384,14 @@ const FlashSalePage = () => {
   const applyBulkDiscount = (pct: number) => {
     if (formData.selectedProducts.size === 0) return
     const safePct = Math.min(Math.max(pct, 0), 100)
+    setRowErrors({})
     const next = new Map(formData.selectedProducts)
     next.forEach((data, productId) => {
       const newPrice = Math.max(
         0,
         Math.round((data.originalPrice * (1 - safePct / 100)) * 100) / 100
       )
-      next.set(productId, { price: newPrice, originalPrice: data.originalPrice })
+      next.set(productId, { ...data, price: newPrice })
     })
     setFormData({ ...formData, selectedProducts: next })
   }
@@ -474,7 +506,7 @@ const FlashSalePage = () => {
               }`}
           >
             <div className="flex items-center justify-between">
-              <Text size="xsmall" className="uppercase tracking-wide text-ui-fg-subtle">Hidden (draft)</Text>
+              <Text size="xsmall" className="uppercase tracking-wide text-ui-fg-subtle">Hidden</Text>
               <span className="w-2 h-2 rounded-full bg-amber-500" />
             </div>
             <div className="text-2xl font-semibold text-amber-600 dark:text-amber-400 mt-1">{counts.hidden}</div>
@@ -549,7 +581,7 @@ const FlashSalePage = () => {
               <Label>Enabled</Label>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>Start Time</Label>
                 <Input
@@ -667,7 +699,7 @@ const FlashSalePage = () => {
                 <Badge color="blue">{formData.selectedProducts.size} selected</Badge>
               )}
               <Text size="small" className="text-ui-fg-subtle ml-auto">
-                Set price per product or apply a bulk discount
+                Set a deal price for each seller and SKU
               </Text>
             </div>
 
@@ -730,16 +762,16 @@ const FlashSalePage = () => {
               ) : (
                 <div className="space-y-2">
                   {products.map((product) => {
-                    const isSelected = formData.selectedProducts.has(product.id)
-                    const priceData = formData.selectedProducts.get(product.id)
+                    const isSelected = formData.selectedProducts.has(product.variant_id)
+                    const priceData = formData.selectedProducts.get(product.variant_id)
                     const currentDiscount = priceData && product.price > 0
                       ? Math.round(((product.price - priceData.price) / product.price) * 100)
                       : 0
 
                     return (
                       <div
-                        key={product.id}
-                        className={`flex items-center gap-3 p-3 rounded-lg border transition ${isSelected
+                        key={product.variant_id}
+                        className={`flex flex-wrap items-center gap-3 p-3 rounded-lg border transition ${isSelected
                           ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700 shadow-sm"
                           : "bg-ui-bg-base border-ui-border-base hover:border-ui-border-strong"
                           }`}
@@ -763,11 +795,11 @@ const FlashSalePage = () => {
                         <div className="flex-1 min-w-0">
                           <Text className="font-medium truncate">{product.title}</Text>
                           <Text className="text-xs text-ui-fg-subtle">
-                            Current: ₹{product.price.toLocaleString("en-IN")}
+                            {product.seller} · {product.sku} · Regular ₹{product.price.toLocaleString("en-IN")} · Best available ₹{product.best.toLocaleString("en-IN")}
                           </Text>
                         </div>
                         {isSelected && (
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-3">
                             <div>
                               <Label className="text-xs">Flash price (₹)</Label>
                               <Input
@@ -775,9 +807,12 @@ const FlashSalePage = () => {
                                 min="0"
                                 step="0.01"
                                 value={priceData?.price ?? product.price}
-                                onChange={(e) => handlePriceChange(product.id, parseFloat(e.target.value) || 0)}
+                                onChange={(e) => handlePriceChange(product.variant_id, parseFloat(e.target.value) || 0)}
+                                aria-label={`Flash price for ${product.seller} · ${product.sku}`}
                                 className="w-28"
                               />
+                              {rowErrors[product.variant_id] && <p className="text-sm text-ui-fg-error">{rowErrors[product.variant_id]}</p>}
+                              {priceData && <Text size="xsmall" className="text-ui-fg-subtle">{priceIssue(priceData.price, product.price, product.best)}</Text>}
                             </div>
                             <Badge
                               color={
@@ -802,8 +837,13 @@ const FlashSalePage = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 border-t border-ui-border-base pt-5">
-            <Button type="submit" variant="primary" disabled={saving || formData.selectedProducts.size === 0}>
+          {saveError && <p role="alert" className="text-sm text-ui-fg-error">{saveError}</p>}
+          {Object.keys(rowErrors).length > 0 && <div role="alert" className="break-words text-sm text-ui-fg-error">
+            <p>Review these seller offers before publishing.</p>
+            <ul>{Object.entries(rowErrors).map(([id, message]) => <li key={id}>{message}</li>)}</ul>
+          </div>}
+          <div className="flex flex-wrap items-center gap-2 border-t border-ui-border-base pt-5">
+            <Button type="submit" variant="primary" disabled={saving || formData.selectedProducts.size === 0 || Array.from(formData.selectedProducts.values()).some(row => priceIssue(row.price, row.originalPrice, row.best))}>
               {saving ? "Saving..." : "Create"} Flash Sale
               {formData.selectedProducts.size > 0 && (
                 <span className="ml-1 opacity-80">({formData.selectedProducts.size})</span>
@@ -910,9 +950,9 @@ const FlashSalePage = () => {
                             ) : item.is_active ? (
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-xs font-medium">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                {item.product_status === "deleted"
+                                {item.hidden_reason || (item.product_status === "deleted"
                                   ? "Hidden — product deleted"
-                                  : `Hidden — product ${item.product_status || "unpublished"}`}
+                                  : `Hidden — product ${item.product_status || "unpublished"}`)}
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-medium">
@@ -930,7 +970,7 @@ const FlashSalePage = () => {
                             )}
                           </div>
                           <Heading level="h3" className="text-base leading-snug truncate">
-                            {item.product_title}
+                            {item.product_title} {item.seller && `· ${item.seller}`}
                           </Heading>
                           <div className="flex items-center gap-3 text-xs text-ui-fg-subtle mt-1 flex-wrap">
                             <span className="inline-flex items-center gap-1">

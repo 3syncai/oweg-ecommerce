@@ -42,11 +42,13 @@ async function main() {
         if (config.pending) { base.payment_status = 'awaiting'; base.metadata = {}; }
         if (config.cancelled) base.status = 'canceled';
         if (config.paid) base.is_draft_order = false;
+        if (config.stockPending) base.metadata.checkout_stock_pending = true;
         window.fetch = async (url, init) => {
           const entry = { url: String(url), method: init?.method || 'GET' }; window.requests.push(entry);
           const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
           if (String(url).includes('cart/clear')) return response({ cleared: true });
           if (String(url).includes('reconcile')) return response(config.finalId ? { orderId: config.finalId } : {});
+          if (String(url).includes('/cod') && config.soldOut) return response({error:'QA kettle is out of stock.'},409);
           if (String(url).includes('/cod')) return response({ medusaOrderId: 'order_qa' });
           if (config.unauthorized) return response({}, 401);
           const statusOnly = String(url).includes('confirmation-status');
@@ -85,6 +87,14 @@ async function main() {
       assert((await page.locator('body').innerText()).includes('123.45'));
     });
     await scenario('COD only confirms after backend placement and COD confirmation', { cod: true, query: '&cod=1' }, async page => { await confirmed(page); await page.getByText('Amount to pay').waitFor(); });
+    await scenario('mobile COD stock conflict shows the item and keeps the cart', { mobile:true, cod:true, soldOut:true, stayDraft:true, query:'&cod=1&confirming=1' }, async page => {
+      await page.getByText('QA kettle is out of stock.').waitFor();
+      assert.equal(await page.evaluate(() => window.requests.some(r => r.url.includes('cart/clear'))),false);
+    });
+    await scenario('paid order awaiting stock never asks for a second payment', {paid:true, stockPending:true}, async page => {
+      await page.getByText(/checking stock for your order/).waitFor();
+      assert.equal(await page.getByRole('heading',{name:'Thank you for your order!'}).count(),0);
+    });
     await scenario('six temporary missing responses do not declare payment failure', { notFound: true }, confirmed);
     await scenario('slow responses and temporary 503 retry sequentially', { transient: true, slow: true }, async page => {
       await confirmed(page);

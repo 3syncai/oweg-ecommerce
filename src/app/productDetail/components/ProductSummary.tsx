@@ -221,7 +221,7 @@ const ProductSummary = ({
       <div className={styles.priceSection}>
         <div className={styles.priceRow}>
           <span className={styles.price}>{formatPrice(displayPrice)}</span>
-          {displayMRP > displayPrice && <span className={styles.mrp}>{formatPrice(displayMRP)}</span>}
+          {displayMRP > displayPrice && <span className={styles.mrp}>{flashSaleInfo?.active ? "Was " : "MRP "}{formatPrice(displayMRP)}</span>}
         </div>
         <div className={styles.savingsRow}>
           {flashSaleInfo?.active && (
@@ -242,7 +242,7 @@ const ProductSummary = ({
               {product.discount}% OFF
             </span>
           )}
-          {rawSavings > 0 && <span className={styles.savings}>You save {formatPrice(rawSavings)}</span>}
+          {rawSavings > 0 && <span className={styles.savings}>{flashSaleInfo?.active ? "Flash saving" : "You save"} {formatPrice(rawSavings)}</span>}
         </div>
         <p className={styles.taxNote}>Inclusive of all taxes | Prices shown in {product.currency}</p>
       </div>

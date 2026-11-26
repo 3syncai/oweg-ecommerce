@@ -20,6 +20,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Push notification defaults (used when the app is closed / in the background) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_oweg" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/oweg_notification_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="oweg_marketing" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -32,4 +43,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Required on Android 13+ (API 33) to show notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

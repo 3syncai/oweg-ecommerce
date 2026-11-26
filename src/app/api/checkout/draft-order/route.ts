@@ -18,6 +18,7 @@ import { cartLineAmountRupees } from "@/lib/cart-helpers";
 import { applyFlashSalePricesToCart } from "@/lib/flash-sale-cart-mapper";
 import { getPool } from "@/lib/wallet-ledger";
 import { lookupCustomerReferrerForCustomer } from "@/lib/customer-affiliate-coins";
+import { checkoutStockIssue } from "@/lib/medusa-payment";
 import { reserveCheckoutCoins } from "@/lib/payment-reliability";
 import {eligibleCoinDiscount} from "@/lib/wallet-policy";
 import {
@@ -55,6 +56,7 @@ type DraftRequestBody = {
   referralCode?: string;
   customerAffiliateCode?: string;
   paymentMethod?: "razorpay" | "cod";
+  reviewedCartPrices?: Array<{ id: string; price: number }>;
   itemsOverride?: Array<{ variant_id: string; quantity: number; price_minor?: number; seller_selected?: boolean }>;
   mode?: "buy_now" | "cart";
   shippingPrice?: number;
@@ -384,6 +386,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cart access denied" }, { status: 403 });
     }
 
+    for (const line of Array.isArray(cart.items) ? cart.items : []) {
+      const quoted = itemsOverride?.find(item => item.variant_id === line.variant_id)?.unit_price
+        ?? body.reviewedCartPrices?.find(item => item.id === line.id)?.price
+      if (typeof quoted === "number" && Number(line.unit_price) > quoted + 0.005) {
+        return NextResponse.json({ error: "This price has changed. Review the current price before placing your order." }, { status: 409 })
+      }
+    }
+
     stage = "seller_and_pricing";
     const items = Array.isArray(cart.items)
       ? cart.items
@@ -409,10 +419,7 @@ export async function POST(req: Request) {
           // on the draft (not display-only), or Razorpay charges list price.
           const override = itemsOverride?.find(it => it.variant_id === variantId)
           const cartUnit = Number(record.unit_price)
-          const overrideUnit = Number(override?.unit_price)
-          const unit_price = Number.isFinite(overrideUnit) && overrideUnit >= 0
-            ? (Number.isFinite(cartUnit) && cartUnit >= 0 ? Math.min(overrideUnit, cartUnit) : overrideUnit)
-            : (Number.isFinite(cartUnit) && cartUnit >= 0 ? cartUnit : undefined)
+          const unit_price = Number.isFinite(cartUnit) && cartUnit >= 0 ? cartUnit : undefined
           const seller_selected = override?.seller_selected || (record.metadata as Record<string, unknown> | undefined)?.seller_selected === true
 
           return {
@@ -805,6 +812,9 @@ export async function POST(req: Request) {
 
         const { persistSnapshotForCheckout } = await import("@/lib/checkout-payment-snapshot");
         await persistSnapshotForCheckout(medusaOrderId, rzpOrder.id);
+
+        const stockIssue = await checkoutStockIssue(medusaOrderId);
+        if (stockIssue) return NextResponse.json(stockIssue, { status: stockIssue.status });
 
         razorpay = {
           orderId: rzpOrder.id,

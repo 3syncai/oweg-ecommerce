@@ -33,7 +33,7 @@ export default function SellerOffers({ offers, selectedVariantId, onSelect, form
         <div className={styles.sellerIdentity}>
           <span className={styles.sellerEyebrow}>Sold by</span>
           <strong>{selected.store_name}</strong>
-          <span className={styles.sellerAvailability}>{selected.available} available</span>
+          <span className={styles.sellerAvailability}>{selected.delivery_unavailable ? "Unavailable at this pincode" : `${selected.available} available`}</span>
         </div>
         <div className={styles.sellerPrice}>
           <strong>{formatPrice(selected.price)}</strong>
@@ -45,10 +45,10 @@ export default function SellerOffers({ offers, selectedVariantId, onSelect, form
           <p>Choose a seller for this product</p>
           {offers.map((offer, index) => (
             <button key={offer.variant_id} type="button" onClick={() => { onSelect(offer.variant_id); setOpen(false) }}
-              aria-pressed={selected.variant_id === offer.variant_id}
+              disabled={offer.delivery_unavailable} aria-pressed={selected.variant_id === offer.variant_id}
               className={`${styles.sellerOption} ${selected.variant_id === offer.variant_id ? styles.sellerOptionSelected : ""}`}>
               <span className={styles.sellerRadio}>{selected.variant_id === offer.variant_id && <Check size={12} aria-hidden="true" />}</span>
-              <span className={styles.sellerIdentity}><strong>{offer.store_name}</strong><span>{index === 0 ? "Lowest price · " : ""}{offer.available} available</span></span>
+              <span className={styles.sellerIdentity}><strong>{offer.store_name}</strong><span>{index === 0 && !offer.delivery_unavailable && offers.every(other => other.delivery_unavailable || other.price >= offer.price) ? "Lowest price · " : ""}{offer.delivery_unavailable ? "Unavailable at this pincode" : `${offer.available} available`}</span></span>
               <strong className={styles.offerPrice}>{formatPrice(offer.price)}</strong>
             </button>
           ))}

@@ -61,9 +61,9 @@ Do **not** reuse **OWEG Online** or the removed **Oweg** listing for Preview.
 
 ### Status bar / Dynamic Island (Capacitor)
 
-Native config sets `StatusBar.overlaysWebView: false` so the WebView sits below the
-system status bar / Dynamic Island / notch using the OS inset (not a fixed top padding).
-Storefront also re-applies this at runtime via `NativeStatusBar` once the bridge is ready.
+Native config uses `StatusBar.overlaysWebView: true` + `ios.contentInset: "never"` so the
+WebView draws edge-to-edge; the storefront header pads with safe-area (`NativeStatusBar`
+publishes `--oweg-sat` when needed). This avoids the white gap above the logo on iPhone.
 After changing StatusBar config, run `npm run sync:preview` and ship a **new** TestFlight build.
 
 ### First upload from Xcode

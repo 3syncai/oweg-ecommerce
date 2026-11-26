@@ -1,6 +1,7 @@
 import type { MedusaRequest, MedusaResponse } from "@medusajs/framework/http"
 import VendorModuleService from "../../../../modules/vendor/service"
 import { VENDOR_MODULE } from "../../../../modules/vendor"
+import { vendorAccountActivity } from "../../../../lib/vendor-user-activity"
 import { Modules } from "@medusajs/framework/utils"
 import { resolveS3ViewUrl } from "../../../../lib/s3-access"
 
@@ -80,10 +81,13 @@ export async function GET(req: MedusaRequest, res: MedusaResponse) {
             status = "rejected"
         }
 
+        const accountActivity = await vendorAccountActivity(id).catch(() => null)
+        res.setHeader("Cache-Control","private, no-store")
         // Return comprehensive vendor data
         return res.json({
             vendor: {
                 ...vendor,
+                account_activity: accountActivity,
                 status,
                 product_count: vendorProducts.length,
                 products: vendorProducts.map((p: any) => ({

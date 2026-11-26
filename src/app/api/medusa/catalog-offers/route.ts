@@ -5,9 +5,11 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest) {
   const variantId = request.nextUrl.searchParams.get("variant_id")
   if (!variantId) return NextResponse.json({ error: "variant_id required" }, { status: 400 })
+  const pincode = request.nextUrl.searchParams.get("pincode") || ""
+  const quantity = request.nextUrl.searchParams.get("quantity") || "1"
   const base = (process.env.MEDUSA_BACKEND_URL || process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL || "http://localhost:9000").replace(/\/$/, "")
   try {
-    const response = await fetch(`${base}/store/catalog-offers?variant_id=${encodeURIComponent(variantId)}`, {
+    const response = await fetch(`${base}/store/catalog-offers?variant_id=${encodeURIComponent(variantId)}&deals=1&pincode=${encodeURIComponent(pincode)}&quantity=${encodeURIComponent(quantity)}`, {
       cache: "no-store",
       headers: {
         ...(process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY || process.env.MEDUSA_PUBLISHABLE_KEY

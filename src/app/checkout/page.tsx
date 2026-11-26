@@ -1272,6 +1272,7 @@ function CheckoutPageInner() {
     setBilling((prev) => (prev.email === normalizedBilling.email ? prev : { ...prev, email: normalizedBilling.email }));
 
     const requestPayload = {
+      reviewedCartPrices: isBuyNow ? undefined : cart?.items?.map(item => ({ id: item.id, price: item.unit_price })),
       shipping: normalizedShipping,
       billing: normalizedBilling,
       billingSameAsShipping: billingSame,
@@ -1386,6 +1387,7 @@ function CheckoutPageInner() {
     if (!customer?.id) return;
     if (!online || processing || addressReviewPending || affiliateValidating || totalsLoading || !isOweg10StatusReady || payableTotal <= 0) return;
     if (!isBuyNow && (loadingCart || cartLoadError)) return;
+    if (paymentMethod === "razorpay") return; // Reserve online stock only on explicit checkout.
     if (draftWarmupStartedRef.current) return;
     if (draftWarmupInFlightRef.current) return;
 
@@ -1442,7 +1444,7 @@ function CheckoutPageInner() {
         });
 
       draftWarmupInFlightRef.current = warmPromise;
-    }, paymentMethod === "razorpay" ? 1200 : 700);
+    }, 700);
 
     return () => {
       cancelled = true;
@@ -1506,16 +1508,18 @@ function CheckoutPageInner() {
     } catch { /* Storage is optional; leave a newer shopping selection intact. */ }
   };
 
-  const finalizeCodCheckout = (draft: DraftOrderResponse) => {
+  const finalizeCodCheckout = async (draft: DraftOrderResponse) => {
     rememberCheckoutItem(draft.medusaOrderId);
-    void fetch("/api/checkout/cod", {
+    const confirmation = await fetch("/api/checkout/cod", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ medusaOrderId: draft.medusaOrderId }),
       keepalive: true,
-    }).catch((err) => {
-      console.error("cod background confirm failed", err);
     });
+    if (!confirmation.ok) {
+      const problem = await confirmation.json().catch(() => ({}));
+      throw new Error(problem.error || "We could not confirm your order. Please try again.");
+    }
     setProcessing(false);
     router.push(
       `${RAZORPAY_SUCCESS}?orderId=${encodeURIComponent(draft.medusaOrderId)}&confirming=1&cod=1`
@@ -1771,7 +1775,7 @@ function CheckoutPageInner() {
       }
       if (saveAsDefault) void saveDefaultAddress();
       if (paymentMethod === "cod") {
-        finalizeCodCheckout(draft);
+        await finalizeCodCheckout(draft);
         return;
       }
       await handleStandardRazorpay(draft, payableTotal);
@@ -1779,7 +1783,7 @@ function CheckoutPageInner() {
       console.error(err);
       const message = err instanceof Error ? err.message : "Checkout failed";
       if (
-        /order not found/i.test(message) ||
+        /order not found|requested quantity|out of stock|checkout has expired/i.test(message) ||
         /order_not_found/i.test(message)
       ) {
         draftWarmupRef.current = null;
@@ -1802,6 +1806,9 @@ function CheckoutPageInner() {
   };
 
   const cartItems = cart?.items || [];
+  const reviewCart = !isBuyNow && /out of stock|requested quantity/i.test(formError)
+    ? <a href="/cart" className="ml-2 font-semibold underline">Review cart</a>
+    : null;
   const payDisabled =
     !online ||
     processing ||
@@ -2660,7 +2667,7 @@ function CheckoutPageInner() {
                   : "Review before you pay"}
               </p>
               <div aria-live="polite" aria-atomic="true" className="hidden text-sm md:block">
-                {customer && formError && <p className="rounded-xl bg-rose-50 p-3 text-rose-800">{formError}</p>}
+                {customer && formError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-rose-800">{formError}{reviewCart}</p>}
                 {checkoutSlow && <p className="text-slate-600">Checkout is taking longer than usual. Keep this page open.</p>}
               </div>
               <Button
@@ -2679,7 +2686,7 @@ function CheckoutPageInner() {
 
         <div className={styles.mobilePayBar}>
           <div aria-live="polite" aria-atomic="true" className="px-4 text-xs">
-            {customer && formError && <p className="rounded-lg bg-rose-50 p-2 text-rose-800">{formError}</p>}
+            {customer && formError && <p role="alert" className="rounded-lg bg-rose-50 p-2 text-rose-800">{formError}{reviewCart}</p>}
             {checkoutSlow && <p className="pt-2 text-slate-600">Checkout is taking longer than usual.</p>}
           </div>
           <div className={styles.checkoutPayContent}>

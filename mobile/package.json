@@ -4,6 +4,7 @@
   "private": true,
   "description": "OWEG customer Capacitor shell (Preview → 0weg.in, Prod → oweg.in)",
   "scripts": {
+    "assets:generate": "capacitor-assets generate --assetPath resources/branding --android --ios --iconBackgroundColor \"#ffffff\" --iconBackgroundColorDark \"#ffffff\" --splashBackgroundColor \"#fafbf7\" --splashBackgroundColorDark \"#fafbf7\"",
     "sync": "node scripts/sync-config.mjs && npx cap sync",
     "sync:preview": "OWEG_APP_FLAVOR=preview npm run sync",
     "sync:prod": "OWEG_APP_FLAVOR=production npm run sync",

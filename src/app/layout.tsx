@@ -23,6 +23,7 @@ import SiteProtections from "@/components/debug-controller/SiteProtections";
 import ConditionalWhatsAppWidget from "@/components/debug-controller/ConditionalWhatsAppWidget";
 import ForceUpdateGate from "@/components/mobile/ForceUpdateGate";
 import NativeBootSplash from "@/components/mobile/NativeBootSplash";
+import NativePushPrompt from "@/components/mobile/NativePushPrompt";
 import NativeStatusBar from "@/components/mobile/NativeStatusBar";
 import { CategoryNavigationProvider } from "@/components/modules/CategoryNavigation";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
@@ -84,8 +85,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#7AC943",
+  themeColor: "#ffffff",
   colorScheme: "light",
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -122,7 +124,12 @@ export default function RootLayout({
                   <main
                     data-storefront-content
                     className="min-h-svh flex-1 bg-[#fafbf7] md:min-h-0"
-                    style={{ paddingTop: "var(--app-header-height, 136px)" }}
+                    style={{
+                      // Include safe-area in the fallback so Capacitor/iOS does not
+                      // tuck the hero under the fixed header before JS measures it.
+                      paddingTop:
+                        "var(--app-header-height, calc(136px + max(env(safe-area-inset-top, 0px), var(--oweg-sat, 0px))))",
+                    }}
                   >
                     {/* Kept inside the header offset so the announcement banner is
                         visible instead of sitting behind the fixed header. */}
@@ -137,6 +144,7 @@ export default function RootLayout({
                   <PWAInstallPrompt />
                   <NativeStatusBar />
                   <NativeBootSplash />
+                  <NativePushPrompt />
                   <ForceUpdateGate />
                 </div>
                 </CategoryNavigationProvider>

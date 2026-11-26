@@ -24,7 +24,7 @@ async function main() {
     bundle: true, write: false, format: 'iife', jsx: 'automatic', loader: { '.css': 'empty' },
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{ name: 'boundaries', setup(b) {
-      b.onResolve({ filter: /^(next\/(link|image|navigation)|@\/contexts\/AuthProvider|@\/lib\/(notifications|razorpay-warmup))$/ }, a => ({ path: a.path, namespace: 'qa' }));
+      b.onResolve({ filter: /^(next\/(link|image|navigation)|@\/contexts\/(AuthProvider|DeliveryLocationProvider)|@\/lib\/(notifications|razorpay-warmup))$/ }, a => ({ path: a.path, namespace: 'qa' }));
       b.onResolve({ filter: /^[^./]/ }, a => a.path.startsWith('@/') ? undefined : ({path:require.resolve(a.path,{paths:[process.cwd()]})}));
       b.onResolve({filter:/\.css$/},a=>({path:a.path,namespace:'css-mock'}));
       b.onLoad({filter:/.*/,namespace:'css-mock'},()=>({loader:'js',contents:'export default {}'}));
@@ -32,6 +32,7 @@ async function main() {
         a.path === 'next/link' ? `import React from'react';export default function Link({href,children,...p}){return <a href={href} {...p}>{children}</a>}` :
         a.path === 'next/image' ? `import React from'react';export default function Image({fill,priority,sizes,...p}){return <img {...p}/ >}` :
         a.path === 'next/navigation' ? `export function useRouter(){return{push:()=>window.openCart(),prefetch:()=>{}}}` :
+        a.path.endsWith('DeliveryLocationProvider') ? `export function useDeliveryLocation(){return {pincode:""}}` :
         a.path.endsWith('AuthProvider') ? `export function useAuth(){return{customer:{id:'customer_qa'},initializing:false}}` :
         a.path.endsWith('razorpay-warmup') ? `export function warmRazorpayCheckout(){}` :
         `const record=(kind,...args)=>window.notices.push({kind,args:args.filter(x=>typeof x!=='function')});
@@ -159,7 +160,7 @@ async function main() {
       assert.equal(await p.locator('[data-cart-flight]').evaluate(n=>n.style.width),'100px');
       await p.evaluate(()=>{const target=document.querySelector('[data-cart-target]');const animate=target.animate.bind(target);window.cartImpacts=0;target.animate=(...args)=>{window.cartImpacts++;return animate(...args)}});
       assert.equal(await p.locator('article img').evaluate(n=>n.style.visibility),'hidden');
-      await p.waitForFunction(()=>document.querySelector('[data-cart-flight]')?.dataset.phase==='diamond');
+      await p.waitForFunction(()=>document.querySelector('[data-cart-flight]')?.dataset.phase==='bank' && Math.abs(new DOMMatrix(getComputedStyle(document.querySelector('[data-cart-flight] img')).transform).m13) > .01);
       await p.waitForFunction(()=>document.querySelector('[data-cart-flight]')?.dataset.phase==='shoot');
       await p.waitForTimeout(250);assert.equal(await p.locator('[data-cart-flight]').getAttribute('data-phase'),'shoot','travel should remain visible beyond the old 260ms phase');
       assert.equal(await p.locator('[data-cart-flight] img').evaluate(n=>getComputedStyle(n).opacity),'1');

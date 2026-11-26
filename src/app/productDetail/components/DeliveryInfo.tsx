@@ -8,6 +8,7 @@ import type { PinStatus } from '../types'
 import styles from '../ProductDetail.module.css'
 
 type DeliveryInfoProps = {
+  policy?: {return_window_days:number; replacement_window_days:number} | null
   pinCode: string
   pinStatus: PinStatus
   pinMessage: string
@@ -15,7 +16,7 @@ type DeliveryInfoProps = {
   onCheck: () => void
 }
 
-const DeliveryInfo = ({ pinCode, pinStatus, pinMessage, onPinCodeChange, onCheck }: DeliveryInfoProps) => (
+const DeliveryInfo = ({ policy, pinCode, pinStatus, pinMessage, onPinCodeChange, onCheck }: DeliveryInfoProps) => (
   <div className={styles.delivery}>
     <div className={styles.deliveryCheck}>
       <h3 className="flex items-center gap-2 font-semibold"><MapPin size={18} aria-hidden /> Delivery & charges</h3>
@@ -33,6 +34,7 @@ const DeliveryInfo = ({ pinCode, pinStatus, pinMessage, onPinCodeChange, onCheck
       <RotateCcw className="w-6 h-6 text-green-600" />
       <div>
         <h3>Returns, replacement & warranty</h3>
+        {policy && <p>{policy.return_window_days > 0 ? `Returns within ${policy.return_window_days} day${policy.return_window_days === 1 ? "" : "s"} of delivery` : "Returns unavailable"} · {policy.replacement_window_days > 0 ? `Replacement within ${policy.replacement_window_days} day${policy.replacement_window_days === 1 ? "" : "s"} of delivery` : "Replacement unavailable"}</p>}
         <p>Eligibility depends on the item and condition. Check the product description for manufacturer warranty.</p>
         <Link href="/returns-policy" className="text-sm underline">Read return conditions</Link>
       </div>

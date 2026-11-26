@@ -23,14 +23,19 @@ function capturePool(): Pool {
     return sharedCapturePool;
 }
 
-async function withOrderRepairLock(orderId:string, task:(client:PoolClient)=>Promise<{success:boolean;error?:string}>) {
+async function withOrderRepairLock(orderId:string, task:(client:PoolClient)=>Promise<{success:boolean;error?:string;itemTitle?:string}>, checkout=false) {
  const pool=createPaymentPool(),client=await pool.connect();
  try {await client.query("BEGIN");await client.query("SET LOCAL lock_timeout='10s'");
    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",["order-payment:"+orderId]);
-   const order=(await client.query('SELECT id,status FROM "order" WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
+   const order=(await client.query('SELECT id,status,metadata FROM "order" WHERE id=$1 FOR UPDATE',[orderId])).rows[0];
    if(!order)throw new Error('order_missing');
+   if(checkout && (['canceled','cancelled'].includes(order.status) || order.metadata?.checkout_tombstone || order.metadata?.checkout_status==='payment_failed')) throw new Error('checkout_closed');
    if(['canceled','cancelled'].includes(order.status)){await client.query('COMMIT');return {success:true};}
-   const result=await task(client);await client.query(result.success?"COMMIT":"ROLLBACK");return result;
+   const result=await task(client);
+   if (checkout && result.success) {
+     await client.query(`UPDATE "order" SET updated_at=now(),metadata=COALESCE(metadata,'{}'::jsonb)||'{"checkout_stock_secured":true}'::jsonb WHERE id=$1`, [orderId]);
+   }
+   await client.query(result.success?"COMMIT":"ROLLBACK");return result;
  }catch(error){await client.query("ROLLBACK").catch(()=>undefined);return {success:false,error:error instanceof Error?error.message:"order_repair_failed"};}
  finally{client.release();await pool.end();}
 }
@@ -104,95 +109,95 @@ export async function ensureOrderShippingMethod(orderId: string) {
  * Ensures all items in an order have stock reservations.
  * If missing, creates them against the default stock location.
  */
-export async function ensureOrderReservations(orderId: string) {
+export async function ensureOrderReservations(orderId: string, checkout = false) {
     if (!process.env.DATABASE_URL) return { success: false, error: 'No DB URL' };
     return withOrderRepairLock(orderId, async pool => {
         console.log(`📦 Checking reservations for order: ${orderId}`);
 
-        // 1. Get default stock location
-        const locRes = await pool.query(`SELECT id FROM stock_location LIMIT 1`);
-        if (locRes.rowCount === 0) {
-            console.error('❌ No stock location found.');
-            return { success: false, error: 'No stock location' };
-        }
-        const locationId = locRes.rows[0].id;
-
-        // 2. Get unreserved items
-        // Join to find items that lack a corresponding reservation_item
-        // NOTE: quantity is on order_item (oi), variant_id is on order_line_item (oli)
         const itemsRes = await pool.query(`
             SELECT oli.id as line_item_id, oli.variant_id,
               GREATEST(0,oi.quantity-oi.fulfilled_quantity) AS quantity, oli.title,pv.manage_inventory,pv.allow_backorder
             FROM order_item oi
             JOIN order_line_item oli ON oi.item_id = oli.id
-            JOIN product_variant pv ON pv.id=oli.variant_id
+            LEFT JOIN product_variant pv ON pv.id=oli.variant_id
             WHERE oi.order_id = $1
             AND oi.deleted_at IS NULL AND oli.deleted_at IS NULL
             AND oi.version=(SELECT version FROM "order" WHERE id=$1)
             AND oi.quantity>oi.fulfilled_quantity
-            AND NOT EXISTS (
-                SELECT 1 FROM reservation_item ri WHERE ri.line_item_id = oli.id AND ri.deleted_at IS NULL
-            )
+            ORDER BY oli.variant_id, oli.id
         `, [orderId]);
 
-        if (itemsRes.rowCount === 0) {
-            console.log('✅ All items already have reservations.');
-            return { success: true };
-        }
+        const managedItems = itemsRes.rows.filter(item => item.variant_id && item.manage_inventory !== false);
+        if (!managedItems.length) return { success: true };
+        // Use the same warehouse as the storefront seller-offer query.
+        const locations = await pool.query("SELECT id FROM stock_location WHERE deleted_at IS NULL AND name='Default Warehouse' ORDER BY id LIMIT 1");
+        const locationId = locations.rows[0]?.id;
+        if (!locationId) return { success: false, error: "No stock location" };
 
-        console.log(`⚠️ Found ${itemsRes.rowCount} items without reservations. Creating them...`);
-
-        for (const item of itemsRes.rows) {
-            if (!item.variant_id || item.manage_inventory===false) continue;
-
+        for (const item of managedItems) {
             // Find Inventory Item ID
             const invRes = await pool.query(`
-                SELECT inventory_item_id,required_quantity
-                FROM product_variant_inventory_item
+                SELECT vi.inventory_item_id, vi.required_quantity,
+                  (SELECT COALESCE(SUM(ri.quantity),0) FROM reservation_item ri
+                   WHERE ri.line_item_id=$2 AND ri.inventory_item_id=vi.inventory_item_id
+                   AND ri.deleted_at IS NULL) AS held
+                FROM product_variant_inventory_item vi
                 WHERE variant_id = $1 AND deleted_at IS NULL ORDER BY inventory_item_id
-            `, [item.variant_id]);
+            `, [item.variant_id, item.line_item_id]);
 
             if (invRes.rowCount === 0) {
                 throw new Error('managed_variant_inventory_link_missing');
             }
 
-            for(const inventory of invRes.rows) {
-            const inventoryItemId = inventory.inventory_item_id;
-            const quantity=Number(item.quantity)*Number(inventory.required_quantity||1);
-            const level=(await pool.query("SELECT id,stocked_quantity,reserved_quantity FROM inventory_level WHERE inventory_item_id=$1 AND location_id=$2 AND deleted_at IS NULL FOR UPDATE",[inventoryItemId,locationId])).rows[0];
-            if(!level)throw new Error('inventory_level_missing');
-            if(!item.allow_backorder && Number(level.stocked_quantity)-Number(level.reserved_quantity)<quantity)throw new Error('insufficient_inventory_for_paid_order');
-            const reservationId = `resitem_${crypto.randomUUID()}`;
-            const rawQuantity = JSON.stringify({ value: String(quantity), precision: 20 });
+            for (const inventory of invRes.rows) {
+                const inventoryItemId = inventory.inventory_item_id;
+                const quantity = Number(item.quantity) * Number(inventory.required_quantity || 1) - Number(inventory.held);
+                if (quantity <= 0) continue;
+                const levels = await pool.query(
+                    "SELECT id,stocked_quantity,reserved_quantity FROM inventory_level WHERE inventory_item_id=$1 AND location_id=$2 AND deleted_at IS NULL FOR UPDATE",
+                    [inventoryItemId, locationId]
+                );
+                const level = levels.rows[0];
+                if (!level || ((checkout || !item.allow_backorder) && Number(level.stocked_quantity) - Number(level.reserved_quantity) < quantity)) {
+                    return { success: false, error: "insufficient_inventory_for_paid_order", itemTitle: item.title || "This item" };
+                }
+                const reservationId = `resitem_${crypto.randomUUID()}`;
+                const rawQuantity = JSON.stringify({ value: String(quantity), precision: 20 });
 
-            // Create Reservation
-            await pool.query(`
-                INSERT INTO reservation_item (
-                    id, line_item_id, location_id, quantity, raw_quantity,
-                    inventory_item_id, allow_backorder, created_at, updated_at
-                ) VALUES (
-                    $1, $2, $3, $4, $5,
-                    $6, $7, now(), now()
-                )
-            `, [reservationId, item.line_item_id, locationId, quantity, rawQuantity, inventoryItemId,Boolean(item.allow_backorder)]);
-            await pool.query(`UPDATE inventory_level SET reserved_quantity=reserved_quantity+$1,
-              raw_reserved_quantity=jsonb_build_object('value',(reserved_quantity+$1)::text,'precision',20),updated_at=now() WHERE id=$2`,[quantity,level.id]);
+                // Create Reservation
+                await pool.query(`
+                    INSERT INTO reservation_item (
+                        id, line_item_id, location_id, quantity, raw_quantity,
+                        inventory_item_id, allow_backorder, created_at, updated_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5,
+                        $6, $7, now(), now()
+                    )
+                `, [reservationId, item.line_item_id, locationId, quantity, rawQuantity, inventoryItemId,Boolean(item.allow_backorder)]);
+                await pool.query(`UPDATE inventory_level SET reserved_quantity=reserved_quantity+$1,
+                  raw_reserved_quantity=jsonb_build_object('value',(reserved_quantity+$1)::text,'precision',20),updated_at=now() WHERE id=$2`,[quantity,level.id]);
 
-            console.log(`   + Reserved ${item.quantity} of "${item.title}"`);
+                console.log(`   + Reserved ${item.quantity} of "${item.title}"`);
             }
         }
 
         console.log('✅ Reservations created.');
         return { success: true };
 
-    });
+    }, checkout);
 }
 
-/**
- * Shared post-convert readiness for both Razorpay and COD.
- * Without shipping method + reservations, Medusa fulfillment lines stay empty
- * and Admin looks like it needs manual inventory allocate.
- */
+export async function checkoutStockIssue(orderId: string) {
+    const result = await ensureOrderReservations(orderId, true);
+    if (result.success) return null;
+    if (result.error === "insufficient_inventory_for_paid_order") {
+        const title = 'itemTitle' in result ? result.itemTitle : 'This item';
+        return { status: 409, error: `${title} is no longer available in the requested quantity from this seller. Reduce the quantity or choose another seller.`, code: "stock_unavailable" };
+    }
+    if (result.error === "checkout_closed") return { status: 409, error: "This checkout has expired. Please start checkout again.", code: "checkout_closed" };
+    return { status: 503, error: "We could not verify stock. Please retry checkout.", code: "stock_check_failed" };
+}
+
 export async function ensurePlacedOrderFulfillmentReady(orderId: string) {
     if (!orderId?.trim()) {
         return {
@@ -229,6 +234,7 @@ export async function releaseOrderInventoryReservations(orderId: string) {
         }
 
 
+        await client.query(`UPDATE "order" SET metadata=metadata-'checkout_stock_secured' WHERE id=$1 AND metadata ? 'checkout_stock_secured'`, [orderId]);
         const reservationsRes = await client.query(
             `SELECT DISTINCT ri.id, ri.inventory_item_id, ri.location_id, ri.quantity
              FROM reservation_item ri

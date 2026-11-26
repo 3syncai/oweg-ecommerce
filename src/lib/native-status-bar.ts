@@ -1,8 +1,4 @@
-import { capacitorPlugin, isNativeApp } from "./native-app";
-
-/** Mirrors @capacitor/status-bar Style.Light — dark icons on light chrome. */
-const STATUS_BAR_STYLE_LIGHT = "LIGHT";
-const STATUS_BAR_BG = "#ffffff";
+import { capacitorPlugin, isNativeApp, nativePlatform } from "./native-app";
 
 type StatusBarPlugin = {
   setOverlaysWebView?: (options: { overlay: boolean }) => Promise<void>;
@@ -13,8 +9,8 @@ type StatusBarPlugin = {
 
 /**
  * Capacitor StatusBar chrome for Preview/Prod shells.
- * Keeps the storefront below the system status bar / Dynamic Island / notch
- * using the OS inset (no hardcoded top padding).
+ * Overlay the WebView and let header CSS + NativeStatusBar apply safe-area
+ * (avoids the white system gap above the OWEG header on iPhone).
  */
 export async function applyNativeStatusBar(): Promise<void> {
   if (!isNativeApp()) return;
@@ -23,9 +19,11 @@ export async function applyNativeStatusBar(): Promise<void> {
   if (!statusBar) return;
 
   try {
-    await statusBar.setOverlaysWebView?.({ overlay: false });
-    await statusBar.setBackgroundColor?.({ color: STATUS_BAR_BG });
-    await statusBar.setStyle?.({ style: STATUS_BAR_STYLE_LIGHT });
+    await statusBar.setOverlaysWebView?.({ overlay: true });
+    await statusBar.setStyle?.({ style: "LIGHT" });
+    if (nativePlatform() === "android") {
+      await statusBar.setBackgroundColor?.({ color: "#ffffff" });
+    }
     await statusBar.show?.();
   } catch {
     /* plugin may be unavailable during early WebView boot */
