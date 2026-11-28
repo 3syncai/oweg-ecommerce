@@ -7,6 +7,7 @@ import { claimWishlist, releaseWishlist, queueWishlist, subscribeWishlist, wishl
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthProvider";
 import {
+  announceAction,
   notifyActionError,
   notifyWishlistLogin,
   notifyWishlistSuccess,
@@ -74,38 +75,33 @@ export function useToggleWishlist() {
   return { ...mutation, isPending: mutation.isPending || Boolean(customer?.id && wishlistPending(customer.id)) };
 }
 
-/**
- * Hook for adding product to wishlist with notifications
- */
-export function useAddToWishlistWithNotification(productName?: string) {
+/** Apply a card's wishlist intent through the shared mutation and feedback. */
+export function useSetWishlistWithNotification() {
   const toggleWishlist = useToggleWishlist();
   const { customer } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
-  const addToWishlist = async (productId: string | number) => {
+  const setWishlist = async (productId: string | number, saved: boolean) => {
     if (!customer) {
       notifyWishlistLogin(() => router.push(buildLoginUrl(pathname)));
       return;
     }
 
+    const id = String(productId);
+    const actionError = saved ? "Unable to save to wishlist." : "Unable to remove from wishlist.";
     try {
-      const result = await toggleWishlist.mutateAsync(productId);
-      if (result.wishlist) notifyWishlistSuccess(productName || "Product");
-      return result;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Unable to save to wishlist.";
-      notifyActionError("Unable to save to wishlist", message);
-      // Event handlers already received visible feedback; avoid an unhandled rejection.
-      return undefined;
+      const result = await toggleWishlist.mutateAsync({ productId: id, saved });
+      if (result.wishlist && result.wishlist.includes(id) === saved) {
+        if (saved) notifyWishlistSuccess();
+        else announceAction("Removed from wishlist");
+        return true;
+      }
+    } catch (error) {
+      notifyActionError(actionError, error instanceof Error ? error.message : "Please try again.");
     }
+    return false;
   };
 
-  return {
-    addToWishlist,
-    isLoading: toggleWishlist.isPending,
-    error: toggleWishlist.error,
-  };
+  return { setWishlist, isLoading: toggleWishlist.isPending };
 }
-

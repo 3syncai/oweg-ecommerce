@@ -2,7 +2,18 @@
 const assert=require('node:assert/strict'),esbuild=require('esbuild');
 const{chromium}=require(process.env.PLAYWRIGHT_MODULE||'C:/Users/jhakr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 (async()=>{
-const bundle=await esbuild.build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React from'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import Auth,{useAuth}from'./src/contexts/AuthProvider';import{useToggleWishlist}from'./src/hooks/useWishlistMutations';function Button({id,label,saved=true}){const w=useToggleWishlist();return <button disabled={w.isPending} onClick={()=>w.mutateAsync({productId:id,saved}).catch(()=>{})}>{label}</button>}function Shop(){const a=useAuth();const w=useToggleWishlist();window.staleQueued=()=>{const task=w.mutateAsync({productId:"blocked",saved:true}).catch(()=>{});a.setCustomer({id:"d",metadata:{wishlist:["d-only"]}});return task};window.writeIdentity=a.setCustomer;window.logout=()=>a.logout();return <><output>{JSON.stringify(a.customer?.metadata?.wishlist||[])}</output><Button id='a' label='Add A'/><Button id='a' label='Other A'/><Button id='b' label='Add B'/><Button id='a' saved={false} label='Remove A'/></>}createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><Auth><Shop/></Auth></QueryClientProvider>);`},bundle:true,write:false,format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'mock',setup(b){b.onResolve({filter:/^(next\/navigation|@\/lib\/notifications)$/},a=>({path:a.path,namespace:'qa'}));b.onResolve({filter:/^[^./]/},a=>a.path.startsWith('@/')?undefined:({path:require.resolve(a.path,{paths:[process.cwd()]})}));b.onLoad({filter:/.*/,namespace:'qa'},()=>({contents:`export const useRouter=()=>({push(){}}),usePathname=()=>'/';export const notifyActionError=()=>{},notifyWishlistLogin=()=>{},notifyWishlistSuccess=()=>{};`}));}}]});
+const bundle=await esbuild.build({stdin:{resolveDir:process.cwd(),loader:'tsx',contents:`import React from'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import Auth,{useAuth}from'./src/contexts/AuthProvider';import{useToggleWishlist}from'./src/hooks/useWishlistMutations';
+import { WishlistHeartButton } from './src/components/ui/WishlistHeartButton';
+function Hearts() {
+  const { customer } = useAuth();
+  const saved = customer?.metadata?.wishlist?.includes('heart') ?? false;
+  return ['Featured products', 'Flash Sale'].map(section =>
+    <section key={section} aria-label={section}>
+      <WishlistHeartButton productId='heart' name='Fixture lamp' saved={saved} size={20} className='heart'/>
+    </section>
+  );
+}
+function Button({id,label,saved=true}){const w=useToggleWishlist();return <button disabled={w.isPending} onClick={()=>w.mutateAsync({productId:id,saved}).catch(()=>{})}>{label}</button>}function Shop(){const a=useAuth();const w=useToggleWishlist();window.staleQueued=()=>{const task=w.mutateAsync({productId:"blocked",saved:true}).catch(()=>{});a.setCustomer({id:"d",metadata:{wishlist:["d-only"]}});return task};window.writeIdentity=a.setCustomer;window.logout=()=>a.logout();return <><output>{JSON.stringify(a.customer?.metadata?.wishlist||[])}</output><Button id='a' label='Add A'/><Button id='a' label='Other A'/><Button id='b' label='Add B'/><Button id='a' saved={false} label='Remove A'/><Hearts/></>}createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><Auth><Shop/></Auth></QueryClientProvider>);`},bundle:true,write:false,format:'iife',jsx:'automatic',define:{'process.env.NODE_ENV':'"production"'},plugins:[{name:'mock',setup(b){b.onResolve({filter:/^(next\/navigation|@\/lib\/notifications)$/},a=>({path:a.path,namespace:'qa'}));b.onResolve({filter:/WishlistHeartButton\.module\.css$/},a=>({path:a.path,namespace:'qa-style'}));b.onLoad({filter:/.*/,namespace:'qa-style'},()=>({contents:'export default {}'}));b.onResolve({filter:/^[^./]/},a=>a.path.startsWith('@/')?undefined:({path:require.resolve(a.path,{paths:[process.cwd()]})}));b.onLoad({filter:/.*/,namespace:'qa'},()=>({contents:`export const useRouter=()=>({push(){}}),usePathname=()=>'/';export const announceAction=()=>{},notifyActionError=()=>{},notifyWishlistLogin=()=>{},notifyWishlistSuccess=()=>{};`}));}}]});
 const browser=await chromium.launch({executablePath:process.env.QA_CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
 try{const ctx=await browser.newContext();const sets={c:new Set(),d:new Set()};let calls=0,fail=false,hold=false;let release;const waiting=()=>new Promise(r=>release=r);
 await ctx.route('**/*',async route=>{const req=route.request(),url=new URL(req.url());if(!url.pathname.startsWith('/api/'))return route.fulfill({contentType:'text/html',body:'<div id="root"></div>'});let data={};let status=200;if(url.pathname.endsWith('/session'))data={customer:{id:'c',metadata:{wishlist:[...sets.c],keep:'profile'}}};else if(url.pathname.includes('wishlist')){if(req.method()==='GET')data={customer:{id:'c'},wishlist:[...sets.c],products:[]};else{calls++;if(hold)await waiting();await new Promise(r=>setTimeout(r,80));const id=JSON.parse(req.postData()).productId;if(fail){status=503;data={error:'fixture unavailable'}}else{req.method()==='DELETE'?sets.c.delete(id):sets.c.add(id);data={wishlist:[...sets.c]}}}}await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)})});
@@ -10,6 +21,34 @@ const page=await ctx.newPage();await page.goto('http://wishlist.test');await pag
 await page.getByText('Add A',{exact:true}).click();await page.waitForFunction(()=>document.querySelector('output').textContent.includes('a'));assert(await page.getByText('Other A',{exact:true}).isDisabled());await page.waitForFunction(()=>!document.querySelector('button').disabled);assert.equal(calls,1);console.log('PASS optimistic shared state and duplicate pending guard');
 await page.getByText('Add A',{exact:true}).click();await page.waitForFunction(()=>!document.querySelector('button').disabled);assert.equal(sets.c.size,1);console.log('PASS repeated add is idempotent');
 fail=true;await page.getByText('Add B',{exact:true}).click();await page.waitForFunction(()=>!document.querySelector('button').disabled);assert(!JSON.parse(await page.locator('output').textContent()).includes('b'));fail=false;console.log('PASS failed response rolls back and reconciles');
+const featured = page.getByRole('region', { name: 'Featured products' });
+const flash = page.getByRole('region', { name: 'Flash Sale' });
+const featuredHeart = featured.getByRole('button');
+const flashHeart = flash.getByRole('button');
+const beforeToggle = calls;
+await featured.getByRole('button', { name: 'Add Fixture lamp to wishlist' }).click();
+await flash.getByRole('button', { name: 'Remove Fixture lamp from wishlist' }).waitFor();
+await page.waitForFunction(() => !document.querySelector('section button').disabled);
+assert.equal(await featuredHeart.getAttribute('aria-pressed'), 'true');
+assert.ok(sets.c.has('heart'));
+assert.equal(calls, beforeToggle + 1);
+
+fail = true;
+await featuredHeart.click();
+await page.waitForFunction(() => !document.querySelector('section button').disabled);
+assert.equal(await featuredHeart.getAttribute('aria-pressed'), 'true');
+assert.equal(await flashHeart.getAttribute('aria-pressed'), 'true');
+assert.ok(sets.c.has('heart'));
+
+fail = false;
+await featured.getByRole('button', { name: 'Remove Fixture lamp from wishlist' }).click();
+await flash.getByRole('button', { name: 'Add Fixture lamp to wishlist' }).waitFor();
+await page.waitForFunction(() => !document.querySelector('section button').disabled);
+assert.equal(await featuredHeart.getAttribute('aria-pressed'), 'false');
+assert.ok(!sets.c.has('heart'));
+assert.deepEqual(JSON.parse(await page.locator('output').textContent()), ['a']);
+assert.equal(calls, beforeToggle + 3);
+console.log('PASS shared card heart toggles, both cards reconcile, failed removal rolls back');
 const other=await ctx.newPage();await other.goto('http://wishlist.test');await other.addScriptTag({content:bundle.outputFiles[0].text});await other.waitForFunction(()=>!!window.writeIdentity);await other.waitForTimeout(150);await Promise.all([page.getByText('Add B',{exact:true}).click(),other.getByText('Remove A',{exact:true}).click()]);await page.waitForFunction(()=>document.querySelector('output').textContent==='["b"]');await other.waitForFunction(()=>document.querySelector('output').textContent==='["b"]');console.log('PASS two tabs reconcile simultaneous independent add/remove');
 hold=true;await page.getByText('Add A',{exact:true}).click();await page.waitForTimeout(50);await page.evaluate(()=>window.writeIdentity({id:'d',metadata:{wishlist:['d-only']}}));hold=false;if(release)release();await page.waitForFunction(()=>!document.querySelector('button').disabled);assert.equal(await page.locator('output').textContent(),'["d-only"]');console.log('PASS old-account response cannot overwrite new login');
 await page.evaluate(()=>window.writeIdentity({id:'c',metadata:{wishlist:[]}}));await page.waitForFunction(()=>document.querySelector('output').textContent==='[]');const before=calls;await page.evaluate(()=>window.staleQueued());assert.equal(calls,before);assert.equal(await page.locator('output').textContent(),'["d-only"]');console.log('PASS same-tick account switch cancels a queued old-account intent');

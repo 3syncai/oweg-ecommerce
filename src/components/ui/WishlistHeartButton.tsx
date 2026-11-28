@@ -2,7 +2,7 @@
 
 import { useState, type MouseEvent } from "react";
 import { Heart } from "lucide-react";
-import { useAddToWishlistWithNotification } from "@/hooks/useWishlistMutations";
+import { useSetWishlistWithNotification } from "@/hooks/useWishlistMutations";
 import styles from "./WishlistHeartButton.module.css";
 
 type Props = {
@@ -14,22 +14,24 @@ type Props = {
 };
 
 export function WishlistHeartButton({ productId, name, saved, size, className }: Props) {
-  const { addToWishlist, isLoading } = useAddToWishlistWithNotification(name);
+  const { setWishlist, isLoading } = useSetWishlistWithNotification();
   const [celebrate, setCelebrate] = useState(false);
 
-  async function save(event: MouseEvent<HTMLButtonElement>) {
+  async function toggle(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
-    const result = await addToWishlist(productId);
-    if (!saved && result?.wishlist?.includes(String(productId)) &&
+    const nextSaved = !saved;
+    setCelebrate(false);
+    const confirmed = await setWishlist(productId, nextSaved);
+    if (confirmed && nextSaved &&
         !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       setCelebrate(true);
     }
   }
 
   return (
-    <button type="button" onClick={save} disabled={isLoading} className={className}
-      aria-label={saved ? `${name} is in your wishlist` : `Add ${name} to wishlist`} aria-pressed={saved}>
+    <button type="button" onClick={toggle} disabled={isLoading} className={className}
+      aria-label={saved ? `Remove ${name} from wishlist` : `Add ${name} to wishlist`} aria-pressed={saved}>
       <span aria-hidden="true" className={styles.icon} data-celebrate={saved && celebrate}
         onAnimationEnd={(event) => {
           if (event.target === event.currentTarget.firstElementChild) setCelebrate(false);
