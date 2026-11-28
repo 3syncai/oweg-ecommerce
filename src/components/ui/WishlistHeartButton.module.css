@@ -1,0 +1,22 @@
+.icon { position: relative; display: inline-flex; pointer-events: none; }
+.first, .second { position: absolute; left: 50%; top: 50%; opacity: 0; }
+.first { --x: -17px; --y: -15px; --tilt: -20deg; color: #b53a51; }
+.second { --x: 10px; --y: -17px; --tilt: 18deg; color: #d56378; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .icon[data-celebrate="true"] > svg:first-child {
+    animation: beat 540ms ease-out;
+  }
+  .first, .second { animation: float-away 500ms ease-out both; }
+}
+@keyframes beat {
+  0% { transform: scale(.84); }
+  36% { transform: scale(1.2) rotate(-8deg); }
+  68% { transform: scale(.97) rotate(2deg); }
+  100% { transform: scale(1); }
+}
+@keyframes float-away {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.45); }
+  28% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--tilt)) scale(.85); }
+}

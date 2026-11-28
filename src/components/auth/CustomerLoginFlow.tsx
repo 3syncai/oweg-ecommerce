@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import styles from "./CustomerLoginModal.module.css";
 import Link from "next/link";
 import {
   Mail,
@@ -406,16 +407,11 @@ export default function CustomerLoginFlow({
       : "/signup";
 
   const isModal = variant === "modal";
-  const linkColor = isModal ? BRAND : "#3d6d2d";
+  const linkColor = isModal ? "#195647" : "#3d6d2d";
 
   return (
     <section
-      className={`rounded-2xl border border-slate-200/60 bg-white/90 backdrop-blur-sm shadow-xl flex flex-col ${
-        isModal ? "p-6 md:p-7" : "p-8 md:p-10"
-      } ${className}`.trim()}
-      style={{
-        fontFamily: isModal ? '"Inter", "Arial", sans-serif' : "inherit",
-      }}
+      className={`${isModal ? styles.panel : "rounded-2xl border border-slate-200/60 bg-white/90 backdrop-blur-sm shadow-xl flex flex-col p-8 md:p-10"} ${className}`.trim()}
     >
       {mounted && !isOnline && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-sm">
@@ -423,26 +419,24 @@ export default function CustomerLoginFlow({
         </div>
       )}
 
-      <div className={`mb-6 ${isModal ? "mb-5" : "mb-8"} flex items-start justify-between gap-3`}>
+      <div className={`${isModal ? "mb-6" : "mb-8"} flex items-start justify-between gap-3`}>
         <div>
           <h1
             id="customer-login-title"
             className={`font-bold mb-1 ${isModal ? "text-2xl" : "text-3xl"}`}
-            style={{ color: isModal ? BRAND : "#203b27" }}
+            style={{ color: isModal ? "#173e34" : "#203b27" }}
           >
-            {step === 1 ? (isModal ? "Welcome Back" : "Welcome back.") : "Sign in to OWEG"}
+            {step === 1 ? "Sign in to OWEG" : "Verify your account"}
           </h1>
-          <p className="text-slate-600 text-sm">
-            {step === 1
-              ? "Sign in to your account with your email or mobile number."
-              : "One more step. Choose how you’d like to sign in."}
-          </p>
+          {step === 2 && <p className="text-sm text-slate-600">
+            Choose how you’d like to sign in.
+          </p>}
         </div>
         {isModal && onClose ? (
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            className="grid size-11 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -543,7 +537,6 @@ export default function CustomerLoginFlow({
             type="submit"
             disabled={!identifier || busy || !isOnline}
             className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
-            style={{ backgroundColor: BRAND, color: isModal ? "white" : "#203b27" }}
           >
             {busy ? (
               <span className="flex items-center justify-center gap-2">
@@ -551,11 +544,11 @@ export default function CustomerLoginFlow({
                 Please wait...
               </span>
             ) : (
-              "Continue →"
+              "Continue"
             )}
           </button>
 
-          <div className="text-center space-y-3 pt-2">
+          <div className={isModal ? styles.footer : "text-center space-y-3 pt-2"}>
             <p className="text-sm text-slate-600">
               New to OWEG?{" "}
               <Link
@@ -806,8 +799,7 @@ export default function CustomerLoginFlow({
                 (authMethod === "otp" && !otp)
               }
               className="w-full rounded-lg px-6 py-3.5 font-semibold text-white transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 cursor-pointer"
-              style={{ backgroundColor: BRAND, color: isModal ? "white" : "#203b27" }}
-            >
+              >
               {busy ? (
                 <span className="flex items-center justify-center gap-2">
                   <Loader2 className="h-5 w-5 animate-spin" />

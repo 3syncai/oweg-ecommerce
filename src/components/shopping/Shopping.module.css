@@ -297,5 +297,6 @@
     font-size: .75rem;
   }
   .checkoutPayTotal strong { font-size: 1.125rem; line-height: 1.25; overflow-wrap: anywhere; }
+  .checkoutPage .checkoutInlineAction { display: none; }
   .checkoutMobileAction { min-height: 46px; white-space: normal; padding-inline: 8px; text-align: center; }
 }

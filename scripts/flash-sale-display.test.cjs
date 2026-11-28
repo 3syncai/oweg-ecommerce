@@ -55,7 +55,7 @@ const showcase = load('src/components/flash-sale/FlashSaleSection.tsx', {
   'next/link':({children,href,...props})=>React.createElement('a',{...props,href,prefetch:undefined},children),
   'next/image':({src,alt})=>React.createElement('img',{src,alt}),
   '@/contexts/AuthProvider':{useAuth:()=>({customer:null})},
-  '@/hooks/useWishlistMutations':{useAddToWishlistWithNotification:()=>({addToWishlist:()=>{},isLoading:false})},
+  '@/components/ui/WishlistHeartButton':{WishlistHeartButton:()=>null},
   '@/components/modules/ProductCardQuickActions':{ProductCardQuickActions:({variantId})=>React.createElement('button',{'data-variant':variantId},'Add to Cart')},
   './FlashSaleSection.module.css':new Proxy({}, {get:(_,key)=>String(key)}),
 })
@@ -211,6 +211,26 @@ test('full store response includes the saved heading and all published deals acr
   assert.equal(result.products[0].flash_sale.title,'Weekend Deals')
   assert.equal(result.products[0].flash_sale_price,90)
   assert.equal(result.products.at(-1).id,'p-73')
+
+  // An untitled deal expires first, but the next named deal supplies the heading.
+  items[0].title = null
+  items[0].expires_at = '2098-01-01T00:00:00.000Z'
+  items[1].title = '  Kitchen Deals  '
+  items[1].expires_at = '2098-06-01T00:00:00.000Z'
+  items[1].flash_sale_price = '95.00'
+  const list = () => route.GET({query:{all:'1'},scope:{resolve:name=>name==='flash'?service:catalog}},{json:value=>value})
+  const mixed = await list()
+  assert.equal(mixed.flash_sale.title, 'Kitchen Deals')
+  assert.equal(mixed.flash_sale.expires_at, items[0].expires_at)
+  assert.equal(mixed.flash_sale.time_remaining_ms, mixed.products[0].flash_sale.time_remaining_ms)
+  assert.equal(mixed.products[0].flash_sale.title, null)
+  assert.equal(mixed.products[0].flash_sale_price, 90)
+  assert.equal(mixed.products.at(-1).id, 'p-1')
+
+  for (const item of items) item.title = '  '
+  items.at(-1).title = 'Unpublished deal'
+  const untitled = await list()
+  assert.equal(display.flashSaleTitle(untitled.flash_sale.title), 'Featured deals')
 })
 
 test('overlapping featured deals requests share stock validation within the same cache window', async () => {

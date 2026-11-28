@@ -291,7 +291,8 @@ const Header: React.FC = () => {
       pathname?.startsWith('/wishlist') ||
       pathname === '/account' ||
       pathname === '/account/orders' ||
-      pathname === '/checkout');
+      pathname === '/checkout' ||
+      pathname === '/login');
   const [, setMobileProfileOpen] = React.useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = React.useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = React.useState(false);
@@ -775,6 +776,8 @@ const Header: React.FC = () => {
       });
     };
     handleBreakpoint();
+    // The page can scroll before the header hydrates. Check the initial position from the top.
+    if (mobileHome?.matches) homeScrollAnchor = 0;
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
