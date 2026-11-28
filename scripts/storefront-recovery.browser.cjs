@@ -8,7 +8,7 @@ const another = { id: 'cus_qa_other', first_name: 'Other', email: 'qa-other@exam
 
 async function fixture(browser, width = 1280, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: 800 }, serviceWorkers: 'block', ...options.browser });
-  let customer = owner;
+  let customer = options.guest ? null : owner;
   let loginCustomer = owner;
   let logoutCount = 0;
   let draftCount = 0;
@@ -192,6 +192,28 @@ async function checkLoadingFeedback(browser) {
   console.log('PASS mobile pull threshold, keyboard refresh, and reduced-motion checkout progress');
 }
 
+async function guestCheckout(browser) {
+  for (const width of [390, 544, 768, 1280]) {
+    const qa = await fixture(browser, width, { guest: true });
+    try {
+      for (const path of ['/checkout', '/checkout?buyNow=1&variant_id=variant_fixture&qty=1&price=804&sellerSelected=1']) {
+        await qa.go(path);
+        const action = qa.page.getByRole('button', { name: 'Sign in to continue', exact: true });
+        await action.first().waitFor();
+        assert.equal(await action.count(), 1);
+        assert.ok(await action.isEnabled());
+        await action.click();
+        await qa.page.locator('#login-identifier').waitFor();
+        assert.equal(new URL(qa.page.url()).search, new URL(path, base).search);
+        assert.equal(qa.draftCount(), 0);
+      }
+    } finally {
+      await qa.context.close();
+    }
+  }
+  console.log('PASS single guest checkout action for cart and Buy Now at four widths');
+}
+
 async function checkoutExpiry(browser, nextCustomer) {
   const qa = await fixture(browser);
   qa.setLoginCustomer(nextCustomer);
@@ -229,6 +251,7 @@ async function checkoutExpiry(browser, nextCustomer) {
 async function run() {
   const browser = await chromium.launch({ headless: true, executablePath: process.env.QA_CHROME_PATH });
   try {
+    await guestCheckout(browser);
     await checkOrderScreens(browser);
     if (process.env.ORDERS_ONLY === '1') return;
     for (const width of [1280, 390]) {

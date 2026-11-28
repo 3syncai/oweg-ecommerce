@@ -5,10 +5,10 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, ImageOff, Star } from "lucide-react";
+import { ImageOff, Star } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthProvider";
-import { useAddToWishlistWithNotification } from "@/hooks/useWishlistMutations";
+import { WishlistHeartButton } from "@/components/ui/WishlistHeartButton";
 import { ProductCardQuickActions } from "@/components/modules/ProductCardQuickActions";
 import styles from "./ProductCard.module.css";
 
@@ -63,7 +63,6 @@ export function ProductCard({
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const [prefetched, setPrefetched] = useState(false);
   const { customer } = useAuth();
-  const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(name);
   const router = useRouter();
 
   const isOutOfStock = typeof inventory_quantity !== "number" || inventory_quantity <= 0;
@@ -81,11 +80,6 @@ export function ProductCard({
     return list.map((itemId) => String(itemId)).includes(String(id));
   })();
 
-  const handleWishlist = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    await addToWishlist(id);
-  };
 
   const prefetchRoute = () => {
     if (prefetched) return;
@@ -109,9 +103,7 @@ export function ProductCard({
           )}
           {isOutOfStock && <span className={styles.stockBadge}>Out of stock</span>}
         </Link>
-        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} aria-label={isWishlisted ? `${name} is in your wishlist` : `Add ${name} to wishlist`} aria-pressed={isWishlisted} className={`${styles.wishlist} oweg-wishlist-motion`}>
-          <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} aria-hidden />
-        </button>
+        <WishlistHeartButton productId={id} name={name} size={20} saved={isWishlisted} className={styles.wishlist} />
       </div>
       <div className={styles.body}>
         <div className={styles.rating}>

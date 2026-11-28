@@ -1,5 +1,6 @@
 // Removed OpenCart MySQL dependency - now using Medusa prices only
 
+import { featuredProductsPageSize, isFeaturedProductsCursor, parseFeaturedProducts } from "../../my-medusa-store/src/shared/featured-products";
 import { getPriceListPrices } from "./price-lists";
 import { mergeCatalogProductDetails } from "./catalog-product-group";
 import { isVariantPurchasable } from "./stock-availability";
@@ -617,6 +618,22 @@ export async function fetchDiscoveryProducts(offset: number, limit: number) {
   } finally {
     console.info("[home-discovery] Medusa products read", { offset, limit, durationMs: Date.now() - start });
   }
+}
+
+/** Read the homepage selection using the same storefront credentials as the catalog. */
+export async function fetchFeaturedProductsConfig(cursor: string) {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  const res = await api(`/store/featured-products${query}`, { signal: AbortSignal.timeout(3000) });
+  if (res.status === 409) return null;
+  if (!res.ok) throw new Error(`Featured products config unavailable (${res.status})`);
+  const data = await res.json();
+  const config = parseFeaturedProducts(data);
+  const nextCursor: unknown = data?.next_cursor ?? null;
+  if (!config || config.product_ids.length > featuredProductsPageSize ||
+      !(nextCursor === null || (typeof nextCursor === "string" && isFeaturedProductsCursor(nextCursor)))) {
+    throw new Error("Invalid featured products page");
+  }
+  return { ...config, nextCursor };
 }
 
 /** Bounded public product lookup for merchandising stock checks. */

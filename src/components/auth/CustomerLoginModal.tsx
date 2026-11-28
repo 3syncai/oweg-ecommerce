@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import styles from "./CustomerLoginModal.module.css";
 import CustomerLoginFlow from "@/components/auth/CustomerLoginFlow";
 import type { StoreCustomer } from "@/contexts/AuthProvider";
 
@@ -17,48 +18,48 @@ export default function CustomerLoginModal({
   onSuccess,
   signupRedirectPath,
 }: CustomerLoginModalProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    const t = window.setTimeout(() => {
-      dialogRef.current?.focus();
-    }, 0);
+    const dialog = dialogRef.current;
+    if (!open || !dialog) return;
+    const trigger = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.clearTimeout(t);
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+      if (trigger instanceof HTMLElement && trigger.isConnected) {
+        trigger.focus({ preventScroll: true });
+      }
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[999] bg-black/35 backdrop-blur-sm flex items-center justify-center px-4 py-6 overflow-y-auto"
-      role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="customer-login-title"
+      className={styles.dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right ||
+            event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
       }}
     >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="customer-login-title"
-        tabIndex={-1}
-        className="w-full max-w-md my-auto outline-none"
-      >
         <CustomerLoginFlow
           variant="modal"
           onClose={onClose}
           onSuccess={onSuccess}
           signupRedirectPath={signupRedirectPath}
         />
-      </div>
-    </div>
+    </dialog>
   );
 }

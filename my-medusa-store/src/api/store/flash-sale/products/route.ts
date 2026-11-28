@@ -27,10 +27,24 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         flash_sale_price: Number(item.flash_sale_price), original_price: Math.min(item.regular, Number(item.original_price)),
         flash_sale: { title: item.title, expires_at: item.expires_at, time_remaining_ms: +new Date(item.expires_at) - now } }]
     })
-    const earliest = products.reduce<typeof products[number] | undefined>((first, item) =>
-      !first || item.flash_sale.time_remaining_ms < first.flash_sale.time_remaining_ms ? item : first, undefined)
-    return res.json({ active: Boolean(earliest), products, flash_sale: earliest ?
-      { ...earliest.flash_sale, item_count: products.length } : null })
+    let earliest: typeof products[number]["flash_sale"] | undefined
+    let earliestTitled: { title: string; time_remaining_ms: number } | undefined
+    for (const { flash_sale: deal } of products) {
+      if (!earliest || deal.time_remaining_ms < earliest.time_remaining_ms) {
+        earliest = deal
+      }
+
+      const title = deal.title?.trim()
+      if (title && (!earliestTitled || deal.time_remaining_ms < earliestTitled.time_remaining_ms)) {
+        earliestTitled = { title, time_remaining_ms: deal.time_remaining_ms }
+      }
+    }
+
+    return res.json({
+      active: Boolean(earliest),
+      products,
+      flash_sale: earliest ? { ...earliest, title: earliestTitled?.title ?? null, item_count: products.length } : null,
+    })
   } catch (error) {
     console.error("Error fetching flash sale offers", error)
     return res.status(503).json({ active: false, flash_sale: null, products: [] })

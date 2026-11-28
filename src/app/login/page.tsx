@@ -64,7 +64,6 @@ function LoginPageInner() {
             </div>
           </aside>
           <div className={styles.formPanel}>
-            <div className={styles.formTop}><span>YOUR OWEG ACCOUNT</span><span className={styles.brandDot} aria-hidden="true" /></div>
             <CustomerLoginFlow
               variant="page"
               className={styles.loginForm}
@@ -75,7 +74,7 @@ function LoginPageInner() {
                 router.push(redirectTarget);
               }}
             />
-            <div className={styles.help}>A little help getting started?<Link href="/contact">Get in touch <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
+            <div className={styles.help}><Link href="/contact">Get help signing in <ArrowUpRight size={15} aria-hidden="true" /></Link></div>
           </div>
         </div>
       </div>

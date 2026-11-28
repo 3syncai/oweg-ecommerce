@@ -4,10 +4,10 @@ import React, { useCallback, useEffect, useState, useRef } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight, Zap, ArrowRight } from 'lucide-react'
-import { Heart, ImageOff } from 'lucide-react'
+import { ImageOff } from 'lucide-react'
 import axios from 'axios'
 import { useAuth } from '@/contexts/AuthProvider'
-import { useAddToWishlistWithNotification } from '@/hooks/useWishlistMutations'
+import { WishlistHeartButton } from "@/components/ui/WishlistHeartButton";
 import { ProductCardQuickActions } from '@/components/modules/ProductCardQuickActions'
 import styles from './FlashSaleSection.module.css'
 import { flashSaleCountdown, flashSaleTimerUnits, flashSaleTitle } from '@/lib/flash-sale-display'
@@ -200,7 +200,6 @@ export function FlashSaleShowcase({ data, timeRemaining, showImageFallback = fal
 function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSaleProduct; showImageFallback?: boolean }) {
   const [failedImage, setFailedImage] = useState<string | null>(null)
   const { customer } = useAuth()
-  const { addToWishlist, isLoading: isAddingToWishlist } = useAddToWishlistWithNotification(product.id)
 
   // Get variant_id from product
   const variantId = product.variant_id || null
@@ -239,11 +238,6 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
     return list.map((itemId) => String(itemId)).includes(String(product.id))
   })()
 
-  const handleWishlist = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    await addToWishlist(product.id)
-  }
 
   return (
     <article className={styles.card}>
@@ -254,9 +248,7 @@ function FlashSaleProductCard({ product, showImageFallback }: { product: FlashSa
           ) : <Image src={imageUrl} alt={product.title} fill className={styles.image} sizes="(max-width: 639px) 160px, 190px" onError={showImageFallback ? () => setFailedImage(imageUrl) : undefined} />}
         </Link>
         <span className={styles.deal}>Deal</span>
-        <button type="button" onClick={handleWishlist} disabled={isAddingToWishlist} className={`${styles.wishlist} oweg-wishlist-motion`} aria-label={`Add ${product.title} to wishlist`} aria-pressed={isWishlisted}>
-          <Heart size={18} fill={isWishlisted ? 'currentColor' : 'none'} aria-hidden />
-        </button>
+        <WishlistHeartButton productId={product.id} name={product.title} size={18} saved={isWishlisted} className={styles.wishlist} />
       </div>
       <div className={styles.body}>
         <Link href={productHref} prefetch={false} className={styles.title}>{product.title}</Link>

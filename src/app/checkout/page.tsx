@@ -1866,16 +1866,14 @@ function CheckoutPageInner() {
           <div className={styles.checkoutFields}>
             {!customer ? (
               <section className={checkoutCard}>
-                <h2 className="text-lg font-semibold text-[#2c342f]">{expiredCustomerId ? "Your session expired" : "Sign in to continue checkout"}</h2>
+                <h2 className="text-lg font-semibold text-[#2c342f]">{expiredCustomerId ? "Your session expired" : "Your account"}</h2>
                 <p className="text-sm text-slate-600">
-                  {hasRecoveryDraft ? "Sign in with the same account to restore your details. Keep this tab open." : "Sign in to review and place your order."}
+                  {hasRecoveryDraft ? "Sign in with the same account to restore your details. Keep this tab open." : "Use your account to choose a delivery address and place your order."}
                 </p>
                 <Button
                   type="button"
-                  className={checkoutCta}
-                  onClick={() => {
-                    setLoginModalOpen(true);
-                  }}
+                  className={`${checkoutCta} ${styles.checkoutInlineAction}`}
+                  onClick={openCheckoutLogin}
                 >
                   {expiredCustomerId ? "Sign in again" : "Sign in to continue"}
                 </Button>
@@ -2567,7 +2565,7 @@ function CheckoutPageInner() {
                 ) : null
               ) : (
                 <div className="rounded-xl border border-slate-200/70 bg-[#f7faf5] px-4 py-3 text-xs text-slate-600">
-                  Sign in to unlock the one-time {OWEG10_CODE} 10% offer.
+                  Eligible accounts can use {OWEG10_CODE} for 10% off once.
                 </div>
               )}
               <div className="rounded-xl border border-slate-200/70 bg-white p-4 space-y-3">
@@ -2661,25 +2659,24 @@ function CheckoutPageInner() {
                 )}
               </div>
 
-              <p className="text-[11px] text-center text-amber-700/90 font-medium">
+              {customer && <p className="text-[11px] text-center text-amber-700/90 font-medium">
                 {paymentMethod === "cod"
                   ? "Review before you place your order"
                   : "Review before you pay"}
-              </p>
+              </p>}
               <div aria-live="polite" aria-atomic="true" className="hidden text-sm md:block">
                 {customer && formError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-rose-800">{formError}{reviewCart}</p>}
                 {checkoutSlow && <p className="text-slate-600">Checkout is taking longer than usual. Keep this page open.</p>}
               </div>
-              <Button
-                type={customer ? "submit" : "button"}
-                className={`hidden md:flex w-full py-3.5 text-base ${checkoutCta}`}
-                onClick={customer ? undefined : openCheckoutLogin}
+              {customer && <Button
+                type="submit"
+                className={`w-full py-3.5 text-base ${checkoutCta} ${styles.checkoutInlineAction}`}
                 disabled={payDisabled}
                 loading={processing}
                 loadingText={payButtonLabel}
               >
-                {customer ? payButtonLabel : "Sign in to continue"}
-              </Button>
+                {payButtonLabel}
+              </Button>}
             </section>
           </div>
         </form>
@@ -2704,14 +2701,14 @@ function CheckoutPageInner() {
               form={customer ? "checkout-form" : undefined}
               className={`${styles.checkoutMobileAction} ${checkoutCta}`}
               onClick={customer ? undefined : openCheckoutLogin}
-              disabled={payDisabled}
+              disabled={customer ? payDisabled : false}
               loading={processing}
               loadingText={
                 paymentMethod === "cod" ? "Placing order…" : "Processing…"
               }
             >
               {!customer
-                ? "Sign in to continue"
+                ? (expiredCustomerId ? "Sign in again" : "Sign in to continue")
                 : processing
                   ? paymentMethod === "cod"
                   ? "Placing order…"

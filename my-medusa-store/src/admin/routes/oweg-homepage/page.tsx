@@ -16,6 +16,12 @@ const OwegHomepagePage = () => {
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
+          <Link to="/oweg-homepage/featured-products" className="rounded-lg border border-ui-border-base p-4 transition-colors hover:bg-ui-bg-subtle-hover">
+            <Heading level="h2">Featured Products</Heading>
+            <Text size="small" className="mt-2 text-ui-fg-subtle">
+              Choose a title and the products shown below Flash Sale.
+            </Text>
+          </Link>
           <Link to="/oweg-homepage/mobile-shop-menu" className="rounded-lg border border-ui-border-base p-4 transition-colors hover:bg-ui-bg-subtle-hover">
             <Heading level="h2">Mobile Shopping Menu</Heading>
             <Text size="small" className="mt-2 text-ui-fg-subtle">
